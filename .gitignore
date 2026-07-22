@@ -1,0 +1,75 @@
+# =====================================================================
+#  STRICT: no game assets, ever. This repo ships CODE + DOCS only.
+#  You must run the tools against a disc YOU legally own.
+# =====================================================================
+
+# --- Disc images / dumps ---
+*.iso
+*.wbfs
+*.rvz
+*.ciso
+*.gcm
+*.nkit.*
+*.wia
+
+# --- Extracted disc filesystem ---
+extract/
+files/
+sys/
+disc/
+*.dol
+*.rso
+*.sel
+*.brsar
+*.tmd
+*.tik
+ticket.bin
+cert.bin
+tmd.bin
+h3.bin
+
+# --- Extracted / decoded assets ---
+assets/
+audio/
+textures_png/
+dialogue_db/
+ghidra_proj/
+ghidra_out/
+*.brstm
+*.thp
+*.wav
+*.ogg
+*.png
+*.tpl
+*.pfs
+*.pkh
+*.pk
+*.u16
+*.tbl
+*.material
+*.model
+*.motion
+*.lip
+*.gmk
+
+# --- Generated data tables that embed game content ---
+*_manifest.csv
+manifest.csv
+rsid_table.csv
+voiced_lines.tsv
+dialogue_voice_browser.html
+
+# --- Tooling byproducts ---
+__pycache__/
+*.pyc
+*.exe
+*.o
+*.obj
+*.log
+*.part
+.DS_Store
+Thumbs.db
+
+# --- Exceptions: allow small illustrative diagrams committed under docs/img/ ---
+!docs/img/
+!docs/img/**

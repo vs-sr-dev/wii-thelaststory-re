@@ -1,0 +1,112 @@
+"""Decoder texture GX (GameCube/Wii) -> RGBA. Gestisce il tiling a blocchi.
+
+Formati GX: 0=I4 1=I8 2=IA4 3=IA8 4=RGB565 5=RGB5A3 6=RGBA8 8=C4 9=C8 0xE=CMPR.
+Ogni formato ha una geometria di blocco (tile) diversa; i pixel sono memorizzati
+tile-per-tile in ordine raster, e dentro il tile in ordine raster.
+"""
+import struct
+
+def _c3to8(v): return (v << 5) | (v << 2) | (v >> 1)
+def _c4to8(v): return (v << 4) | v
+def _c5to8(v): return (v << 3) | (v >> 2)
+def _c6to8(v): return (v << 2) | (v >> 4)
+
+def rgb565(v):
+    r = _c5to8((v >> 11) & 0x1f); g = _c6to8((v >> 5) & 0x3f); b = _c5to8(v & 0x1f)
+    return (r, g, b, 255)
+
+def rgb5a3(v):
+    if v & 0x8000:  # opaco RGB555
+        r = _c5to8((v >> 10) & 0x1f); g = _c5to8((v >> 5) & 0x1f); b = _c5to8(v & 0x1f)
+        return (r, g, b, 255)
+    a = ((v >> 12) & 7); a = (a << 5) | (a << 2) | (a >> 1)
+    r = _c4to8((v >> 8) & 0xf); g = _c4to8((v >> 4) & 0xf); b = _c4to8(v & 0xf)
+    return (r, g, b, a)
+
+# (block_w, block_h) per formato
+BLOCK = {0: (8, 8), 1: (8, 4), 2: (8, 4), 3: (4, 4), 4: (4, 4),
+         5: (4, 4), 6: (4, 4), 0xE: (8, 8)}
+
+def decode(fmt, w, h, data):
+    """Ritorna bytearray RGBA (w*h*4)."""
+    out = bytearray(w * h * 4)
+    def put(x, y, rgba):
+        if x < w and y < h:
+            i = (y * w + x) * 4
+            out[i:i+4] = bytes(rgba)
+    bw, bh = BLOCK[fmt]
+    pos = 0
+    for by in range(0, h, bh):
+        for bx in range(0, w, bw):
+            if fmt == 0:  # I4
+                for ty in range(bh):
+                    for tx in range(0, bw, 2):
+                        b = data[pos]; pos += 1
+                        for k, v in ((0, b >> 4), (1, b & 0xf)):
+                            c = _c4to8(v); put(bx+tx+k, by+ty, (c, c, c, 255))
+            elif fmt == 1:  # I8
+                for ty in range(bh):
+                    for tx in range(bw):
+                        c = data[pos]; pos += 1; put(bx+tx, by+ty, (c, c, c, 255))
+            elif fmt == 2:  # IA4
+                for ty in range(bh):
+                    for tx in range(bw):
+                        b = data[pos]; pos += 1
+                        a = _c4to8(b >> 4); c = _c4to8(b & 0xf)
+                        put(bx+tx, by+ty, (c, c, c, a))
+            elif fmt == 3:  # IA8
+                for ty in range(bh):
+                    for tx in range(bw):
+                        a = data[pos]; c = data[pos+1]; pos += 2
+                        put(bx+tx, by+ty, (c, c, c, a))
+            elif fmt == 4:  # RGB565
+                for ty in range(bh):
+                    for tx in range(bw):
+                        v = struct.unpack('>H', data[pos:pos+2])[0]; pos += 2
+                        put(bx+tx, by+ty, rgb565(v))
+            elif fmt == 5:  # RGB5A3
+                for ty in range(bh):
+                    for tx in range(bw):
+                        v = struct.unpack('>H', data[pos:pos+2])[0]; pos += 2
+                        put(bx+tx, by+ty, rgb5a3(v))
+            elif fmt == 6:  # RGBA8 (blocchi 4x4, due sub-blocchi: AR poi GB)
+                ar = data[pos:pos+32]; gb = data[pos+32:pos+64]; pos += 64
+                for ty in range(4):
+                    for tx in range(4):
+                        j = (ty*4+tx)*2
+                        a = ar[j]; r = ar[j+1]; g = gb[j]; b = gb[j+1]
+                        put(bx+tx, by+ty, (r, g, b, a))
+            elif fmt == 0xE:  # CMPR (DXT1-like, tile 8x8 = 4 sub-blocchi 4x4)
+                for sy in range(0, 8, 4):
+                    for sx in range(0, 8, 4):
+                        c0 = struct.unpack('>H', data[pos:pos+2])[0]
+                        c1 = struct.unpack('>H', data[pos+2:pos+4])[0]
+                        bits = struct.unpack('>I', data[pos+4:pos+8])[0]; pos += 8
+                        cols = []
+                        r0, g0, b0, _ = rgb565(c0); r1, g1, b1, _ = rgb565(c1)
+                        cols.append((r0, g0, b0, 255)); cols.append((r1, g1, b1, 255))
+                        if c0 > c1:
+                            cols.append(((2*r0+r1)//3, (2*g0+g1)//3, (2*b0+b1)//3, 255))
+                            cols.append(((r0+2*r1)//3, (g0+2*g1)//3, (b0+2*b1)//3, 255))
+                        else:
+                            cols.append(((r0+r1)//2, (g0+g1)//2, (b0+b1)//2, 255))
+                            cols.append((0, 0, 0, 0))
+                        for ty in range(4):
+                            for tx in range(4):
+                                idx = (bits >> (2*(15-(ty*4+tx)))) & 3
+                                put(bx+sx+tx, by+sy+ty, cols[idx])
+    return out
+
+def save_png(path, w, h, rgba):
+    import zlib
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)
+        raw += rgba[y*w*4:(y+1)*w*4]
+    def chunk(typ, data):
+        c = struct.pack('>I', len(data)) + typ + data
+        return c + struct.pack('>I', zlib.crc32(typ + data) & 0xffffffff)
+    ihdr = struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)
+    png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + \
+          chunk(b'IDAT', zlib.compress(bytes(raw), 9)) + chunk(b'IEND', b'')
+    open(path, 'wb').write(png)
