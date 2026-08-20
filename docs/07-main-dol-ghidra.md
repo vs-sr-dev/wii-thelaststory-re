@@ -31,6 +31,64 @@ FUN_8047a4c8  (init)
 that confirmed the cracked path-hash (see
 [02 — Pack format](02-pack-format.md)).
 
+## ⚠️ Ghidra sees less than half of this binary
+
+Ghidra 12 ships **no Gekko/Broadway processor language**. The Wii's CPU extends
+PowerPC with **paired-single** instructions — two `f32` packed in one 64-bit
+FPR — and stock `PowerPC:BE:32` does not know them. Where the disassembler meets
+one it reports *bad instruction data* and stops, so the function containing it is
+never created and the decompiler answers `halt_baddata()`.
+
+The scale of that, from `dol_disasm.py --coverage`:
+
+```
+text bytes             : 7,501,824
+covered by a Ghidra fn : 3,305,399  (44.1%)
+NOT covered            : 4,196,425  (55.9%)
+
+                           inside fns  outside fns
+words                         826,376    1,049,080
+paired-singles                  2,199       53,957
+  density                    0.2661%      5.1433%
+
+total paired-singles   : 56,156
+  of them outside a fn : 96.1%   (uncovered text is only 55.9%)
+  density ratio        : 19x
+```
+
+**96.1 % of the paired-single instructions lie outside any function Ghidra
+found**, in territory that is only 55.9 % of the text — a 19× concentration in
+exactly the blind spots. The correlation does not prove every hole has this
+cause (some uncovered bytes are data-in-text, padding, or simply unreached), but
+it is the dominant one.
+
+Two consequences worth carrying:
+
+- **`functions.txt` is a floor, not an inventory.** Any statistic computed
+  against it is understated by roughly this much — including the vtable check in
+  [18 — DOL class names](18-dol-classes.md), where 28.3 % of pointers matched a
+  known function entry. That number is a lower bound for this reason.
+- **The interesting code is the missing code.** Vector maths, particle
+  simulation, animation blending and skinning are precisely what uses paired
+  singles. The `.eff` *loader* was readable ([17](17-eff-binary.md)) because it
+  only moves bytes; the particle *simulation* that would name the 22 curve
+  channels is not.
+
+`dol_disasm.py` is the workaround: a partial PowerPC disassembler that decodes
+enough to follow data flow and **labels** paired-singles instead of dying on
+them. Anything it does not recognise prints as `.word`, so nothing is silently
+mis-decoded.
+
+```
+python dol_disasm.py --func 0x8022fbbc     # find the enclosing function, then list it
+python dol_disasm.py 0x8022fac4 120
+python dol_disasm.py --coverage
+```
+
+It is not a decompiler and not a complete disassembler. The proper fix is a
+Gekko SLEIGH language for Ghidra; community ones exist and are worth trying
+before reading much more of this by hand.
+
 ## Ghidra scripts
 
 Under [`tools/ghidra_scripts/`](../tools/ghidra_scripts/):
@@ -40,5 +98,6 @@ Under [`tools/ghidra_scripts/`](../tools/ghidra_scripts/):
 | `DolLoad.java` | Load a `.dol`, rebuild sections, disassemble |
 | `DolReport.java` | Dump functions + string xrefs |
 | `DolDecomp.java` | Decompile given addresses to C |
+| `DolCallers.java` | List references to an address |
 
 These run under `analyzeHeadless`; see [REPRODUCING.md](../REPRODUCING.md).

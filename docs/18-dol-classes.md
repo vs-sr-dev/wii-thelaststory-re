@@ -30,8 +30,10 @@ look like addresses. Two independent tests answer it (`dol_classes.py --proof`).
 **1. Against Ghidra's own function list.** 28.3 % of the pointers are exact
 function *entry* points, against 0.59 % for the same number of randomly chosen
 4-aligned text words — a **37× lift**. The 28 % is a floor rather than the true
-rate: Ghidra's analysis leaves whole regions of this DOL with no functions
-defined at all, so a correct pointer into one of those regions counts as a miss.
+rate: Ghidra defines functions over only **44 % of this DOL's text**, because its
+stock PowerPC language cannot disassemble the Wii's paired-single instructions
+(measured in [07 — main.dol in Ghidra](07-main-dol-ghidra.md)). A correct pointer
+into one of those regions counts here as a miss.
 
 **2. Against the instruction stream, needing no symbols at all.** What is the
 first instruction at the target?
