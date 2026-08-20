@@ -1,12 +1,18 @@
-r"""A Gekko-tolerant disassembler for main.dol -- and a diagnosis of why one is needed.
+r"""A Gekko-tolerant disassembler for main.dol -- and the diagnosis that led to the fix.
 
-Ghidra 12 ships no Gekko/Broadway processor language. The Wii's CPU adds
-**paired-single** instructions (two f32 in one 64-bit FPR) that stock
+Ghidra 12 ships no Gekko/Broadway processor language *out of the box*. The Wii's
+CPU adds **paired-single** instructions (two f32 in one 64-bit FPR) that stock
 `PowerPC:BE:32` does not know. When the disassembler meets one it reports
 "bad instruction data" and stops, so the function containing it is never
 created -- and the decompiler answers `halt_baddata()`.
 
-That is not a nuisance at the edges. Run `--coverage`:
+**This is now fixable, and fixed: install a Gekko SLEIGH language and coverage
+goes from 44.1 % to 97.6 % -- see docs/19-gekko-sleigh.md.** This module stays
+useful for quick look-ups without opening a project, and `--coverage` is the
+measurement that tells you which of the two setups you are running.
+
+That is not a nuisance at the edges. Run `--coverage` against a stock-PowerPC
+export:
 
     text bytes                : 7,501,824
     covered by a Ghidra fn    : 3,305,399   (44.1 %)
@@ -16,11 +22,13 @@ That is not a nuisance at the edges. Run `--coverage`:
     function Ghidra found. Density is 5.14 % of words in uncovered regions
     against 0.27 % inside them: a 19x concentration in exactly the blind spots.
 
-So `ghidra_out/functions.txt` is a **floor, not an inventory**, and any statistic
-computed against it -- such as the vtable check in dol_classes.py -- is
-understated by that much. Vector maths, particle simulation and animation
+So a stock-PowerPC `functions.txt` is a **floor, not an inventory**, and any
+statistic computed against it -- such as the vtable check in dol_classes.py --
+is understated by that much. Vector maths, particle simulation and animation
 blending are precisely the code that uses paired singles, which is to say
-precisely the code this project most wants to read.
+precisely the code this project most wants to read. With the Gekko language
+installed the same measurement reads 97.6 % covered and 0.7 % of paired-singles
+stranded, and those statistics can be recomputed for real.
 
 This module decodes enough PowerPC to follow data flow -- loads, stores,
 arithmetic, branches, comparisons, scalar FP -- and *labels* paired-singles
@@ -40,6 +48,7 @@ Usage:
     python dol_disasm.py 0x8022fac4 120     # disassemble N instructions
     python dol_disasm.py --func 0x8022fbbc  # find the enclosing function first
     python dol_disasm.py --coverage         # the measurement above
+    python dol_disasm.py --coverage <path>  # ...against another functions.txt
 """
 import bisect
 import collections
@@ -173,11 +182,12 @@ def enclosing(dol, va, back=0x2000):
     return None
 
 
-def coverage(dol):
-    if not os.path.exists(FUNCS):
-        sys.exit(f"need {FUNCS} -- see docs/07-main-dol-ghidra.md")
+def coverage(dol, funcs=FUNCS):
+    if not os.path.exists(funcs):
+        sys.exit(f"need {funcs} -- see docs/07-main-dol-ghidra.md")
     rs = []
-    with open(FUNCS, encoding="utf-8", errors="replace") as fh:
+    print(f"functions from         : {funcs}")
+    with open(funcs, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             p = line.split(None, 2)
             if len(p) == 3:
@@ -237,7 +247,7 @@ def main():
         print(__doc__)
         return
     if args[0] == "--coverage":
-        coverage(dol)
+        coverage(dol, args[1] if len(args) > 1 else FUNCS)
         return
     if args[0] == "--func":
         va = int(args[1], 0)

@@ -121,6 +121,18 @@ analyzeHeadless <proj_dir> LastWorld -import extract/sys/main.dol \
 
 See [docs/07](docs/07-main-dol-ghidra.md).
 
+**Do the Gekko step first — it is worth more than everything else here.**
+Without a Gekko processor language Ghidra decodes 44 % of this binary; with one,
+97.6 %. Install it, re-import with `-processor PowerPC:BE:32:Gekko_Broadway`,
+and check the result with
+
+```
+python tools/dol_disasm.py --coverage <your_ghidra_out>/functions.txt
+```
+
+The recipe and the before/after numbers are in
+[docs/19](docs/19-gekko-sleigh.md).
+
 ---
 
 **Note on outputs.** The generated tables and media (`assets/`, `audio/`,

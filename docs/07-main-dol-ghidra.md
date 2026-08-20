@@ -31,7 +31,14 @@ FUN_8047a4c8  (init)
 that confirmed the cracked path-hash (see
 [02 — Pack format](02-pack-format.md)).
 
-## ⚠️ Ghidra sees less than half of this binary
+## ⚠️ Ghidra sees less than half of this binary — *fixed, see [19](19-gekko-sleigh.md)*
+
+> **Resolved in session 10.** Teaching Ghidra the Gekko instruction set raised
+> text coverage from **44.1 % to 97.6 %** and dropped the paired-singles outside
+> any function from 96.1 % to 0.7 %. The measurement below is kept because it is
+> the *before* half of that comparison, and because it is the reason several
+> earlier statistics in these docs are lower bounds. How to reproduce the fix:
+> [19 — A Gekko SLEIGH for Ghidra](19-gekko-sleigh.md).
 
 Ghidra 12 ships **no Gekko/Broadway processor language**. The Wii's CPU extends
 PowerPC with **paired-single** instructions — two `f32` packed in one 64-bit
@@ -85,9 +92,12 @@ python dol_disasm.py 0x8022fac4 120
 python dol_disasm.py --coverage
 ```
 
-It is not a decompiler and not a complete disassembler. The proper fix is a
-Gekko SLEIGH language for Ghidra; community ones exist and are worth trying
-before reading much more of this by hand.
+It is not a decompiler and not a complete disassembler. The proper fix was a
+Gekko SLEIGH language for Ghidra — that is now done, and
+[19 — A Gekko SLEIGH for Ghidra](19-gekko-sleigh.md) has the recipe. `dol_disasm.py`
+remains useful for quick look-ups without opening a project, and `--coverage`
+is still the measurement that tells you whether your Ghidra setup is the good
+one: point it at a `functions.txt` and it prints the number.
 
 ## Ghidra scripts
 

@@ -42,7 +42,8 @@ pipelines are documented with working extractors. Highlights:
 | **Collision** `.hocb`/`.hcb` | Both reversed: self-relative offsets, triangle records (72 B / 68 B), the **octree validated on 253,447 nodes**, a scene graph in `.hcb`, and the **surface type** joined to the game's 33-row material table |
 | **`main.dol` class names** | RTTI survived the symbol strip: **704 C++ class names with their vtables**, incl. 60+ named `AI::Script::*` behaviours |
 | **Effects** `.efp`/`.effconfig`/`.eff` | Whole group decoded: XML sequencer (effects attach to the skeleton **by bone name**, verified against 4,691 models), area presets, and the particle binary — **little-endian**, with curves keyed over normalised lifetime (100 % on 36,705 curves). The engine's own **loader and its layout schemas** have since been located in `main.dol`, confirming the record sizes from code |
-| **`main.dol`** | Loaded in Ghidra via a custom DOL loader; 14,530 functions; boot call-graph reconstructed. **Caveat measured**: Ghidra's stock PowerPC has no Gekko paired-singles, so it sees only **44 %** of the text |
+| **`main.dol`** | Loaded in Ghidra via a custom DOL loader; boot call-graph reconstructed. Ghidra's stock PowerPC has no Gekko paired-singles and saw only **44 %** of the text — installing a **Gekko SLEIGH** language took that to **97.6 %** and 15,955 functions, which is what unblocked the effect channels |
+| **Effect curve channels** | All 22 identified and grouped, with the `A × 4` table at `+0x28` decoded as the **bitmask of which groups are keyed** — checked **77,733 / 77,733** against the shipped data |
 | **Debug menu** | Present in retail but deliberately unlinked at the linker level (diagnosed) |
 
 Full details are in [`docs/`](docs/).
@@ -56,14 +57,14 @@ stops:
   neighbour at `+0x00` *is* solved — it is the surface type — so this one most
   likely carries per-volume behaviour instead. The `.hcb` "type" field remains
   demonstrably *not* a surface type.
-- **The 22 `.eff` curve channels.** Curves are decoded, their keying is proven,
-  and the engine's loader confirms there are exactly 22 — but which channel
-  drives which visual parameter is still unknown. Pairing them with static
-  emitter parameters was tested and **ruled out**; the loader declares field
-  *widths*, not meanings. The answer is in the particle simulation, and that
-  code is **paired-single Gekko** which Ghidra cannot disassemble — see the
-  blind-spot section in [07](docs/07-main-dol-ghidra.md). A Gekko SLEIGH
-  language for Ghidra is the unblocking step.
+- ~~**The 22 `.eff` curve channels.**~~ — **answered.** A Gekko SLEIGH language
+  ([19](docs/19-gekko-sleigh.md)) made the particle simulation readable, and the
+  channels resolve into 8 groups selected by a 9-bit mask — colour RGBA, scale,
+  two rotations, emitter displacement, and three groups still unnamed. Verified
+  **77,733 / 77,733** against the data. See [20](docs/20-eff-channels.md).
+- **What channels 7–9, 18 and 10–11 actually drive.** Their *structure* is
+  settled (world-space vector, world-space scalar, and a pair with no static
+  fallback); their names are not. This needs the draw path, not the update path.
 - **`.gmk` `TRIGGER` types 2–6** and the `PATH_POINT` opcode: seen, counted, not
   interpreted.
 - **The `.hocb` `0x003` tail.** Present in every file, parsed as bytes, unread.
@@ -75,11 +76,12 @@ stops:
   reference — those assets are simply absent from the disc. See
   [02](docs/02-pack-format.md).
 
-The natural next step for several of these is `main.dol` itself: the `.eff`
-reader is the most promising target, since a little-endian format on a
-big-endian machine must leave a visible byteswap or a distinct load path. The
-DOL is now a far better place to look than it was, because it turns out to
-still carry its **C++ class names** — see [18](docs/18-dol-classes.md).
+The natural next step for several of these is `main.dol` itself, which is now a
+far better place to look than it was: it still carries its **C++ class names**
+([18](docs/18-dol-classes.md)), and with a Gekko processor language installed
+Ghidra reads **97.6 %** of its code instead of 44 %
+([19](docs/19-gekko-sleigh.md)). The collision material bitfield is the obvious
+next beneficiary.
 
 ## Documentation
 
@@ -103,6 +105,8 @@ still carry its **C++ class names** — see [18](docs/18-dol-classes.md).
 | [16 — Effects](docs/16-effects.md) | `.efp` XML sequencer, bone-name attachment proven against the skeletons, `.effconfig` area presets |
 | [17 — `.eff` binary](docs/17-eff-binary.md) | The particle definition: little-endian, emitters and materials, curves keyed over normalised lifetime |
 | [18 — DOL class names](docs/18-dol-classes.md) | RTTI survived the strip: 704 C++ class names and their vtables, recovering named functions |
+| [19 — A Gekko SLEIGH for Ghidra](docs/19-gekko-sleigh.md) | Teaching Ghidra the Wii's paired-single instructions: 44 % → 97.6 % of the text, with the before/after measurement |
+| [20 — The 22 `.eff` channels](docs/20-eff-channels.md) | The curve evaluator, the group bitmask at `+0x28`, and the 77,733/77,733 check that proves the map |
 
 ## Tools
 
@@ -150,6 +154,7 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `dol_disasm.py` | Gekko-tolerant partial disassembler, plus `--coverage`: measures how much of the DOL Ghidra silently misses |
 | `parse_efp.py` | `.efp` effect sequencer + `.effconfig` presets; bone-attachment cross-check |
 | `parse_eff.py` | `.eff` particle binary: emitters, materials, lifetime-keyed curves |
+| `eff_channels.py` | What the 22 curve channels drive, read out of `main.dol`; `--proof` re-runs the 77,733-check against the data |
 | `rso_parse.py`, `rso_reloc.py`, `elfhash_search.py` | RSO/`.sel` module parsing & symbol hashing |
 | `ghidra_scripts/` | Java Ghidra scripts: DOL loader, reports, decompile |
 

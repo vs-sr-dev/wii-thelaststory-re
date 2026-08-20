@@ -48,7 +48,7 @@ offset. The record sizes fall out of that, and they are exact on **every file**:
 | `[+0x14, +0x18)` | **B × 312** | materials |
 | `[+0x18, +0x20)` | **A × 620** | emitters |
 | `[+0x20, +0x28)` | 0 | a **third record type**, 272 bytes — count `C` is 0 in every file, but the loader supports it |
-| `[+0x28, +0x2c)` | A × 4 | one u32 per emitter |
+| `[+0x28, +0x2c)` | A × 4 | one u32 per emitter — a **bitmask of which channel groups are keyed**, see [20](20-eff-channels.md) |
 | `[+0x2c, +0x30)` | **A × 176** | curve tables, one per emitter |
 | `[+0x30, +0x34)` | A × 4 | one u32 per emitter (always 1) |
 | `[+0x34, +0x40)` | 0 | empty in every file |
@@ -141,7 +141,15 @@ non-decreasing on 36,659 of 36,705 (99.87 %) — the 46 exceptions are tiny
 inversions between adjacent keys (`0.37224` then `0.36909`), authoring noise
 rather than a parse error.
 
-### What the 22 channels are is *not* settled
+### What the 22 channels are is *not* settled — *settled in [20](20-eff-channels.md)*
+
+> **Session 10.** The channels are decoded: the grouping guessed below is real
+> (and includes a pair, 10–11, missed here), the `A × 4` table at `+0x28` is the
+> per-emitter **bitmask of which groups are keyed**, and the map holds on
+> 77,733 / 77,733 checks against the shipped data. See
+> [20 — The 22 `.eff` channels](20-eff-channels.md). The section below is kept
+> because the ruled-out idea in it is still worth not repeating — and because
+> [20](20-eff-channels.md) explains *why* it could never have worked.
 
 They are clearly used at different rates and look grouped by component
 (0–2, 3–5, 7–9, 12–14, 15–17, 19–21, with 6 and 18 standing alone). The tempting
