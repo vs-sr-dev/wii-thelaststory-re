@@ -67,8 +67,13 @@ stops:
 - **`.gmk` `TRIGGER` types 2–6** and the `PATH_POINT` opcode: seen, counted, not
   interpreted.
 - **The `.hocb` `0x003` tail.** Present in every file, parsed as bytes, unread.
-- **`levels/` and `eventpacks/`.** Not a new format, but these packs are the
-  likely home of most of the dangling asset references found elsewhere.
+- ~~**`levels/` and `eventpacks/`**~~ — **answered.** The 2052 nested packs hold
+  no `.pfs`, but their names are recoverable by hashing: **100 %** of their
+  19,703 distinct hashes are paths that already exist in `filesystem`, and a
+  400-entry sample is **100 %** byte-identical to it. They are per-level
+  duplication for streaming locality, so they cannot explain any dangling
+  reference — those assets are simply absent from the disc. See
+  [02](docs/02-pack-format.md).
 
 The natural next step for several of these is `main.dol` itself: the `.eff`
 reader is the most promising target, since a little-endian format on a
@@ -108,6 +113,7 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 |---|---|
 | `lwpack.py` | Pack (`.pfs/.pkh/.pk`) parser + LZ11 + CRC path-hash |
 | `extract_all.py` | Rebuild manifests by hash and extract every pack |
+| `parse_nested_packs.py` | The 2052 nameless packs inside `levels/`/`eventpacks/`: names them by hash, proves they are duplicates |
 | `lwextract.c` | Standalone LZ11 decompressor (C) |
 | `gxtex.py`, `batch_tex.py` | GX texture decoder → PNG (all formats) |
 | `rstm_info.py` | BRSTM/RSTM header parser (no subprocess) |

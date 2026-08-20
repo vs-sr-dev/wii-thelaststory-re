@@ -68,3 +68,49 @@ initially looks "encrypted" when read positionally. It is not encrypted; the
 index is simply hash-addressed.
 
 See `tools/lwpack.py` and `tools/extract_all.py`.
+
+## Packs inside packs: `levels/` and `eventpacks/`
+
+Two of the three `pack/` archives unpack into **more packs** — 1313 under
+`levels/` and 739 under `eventpacks/`, 2052 in all. Each nested one ships a
+`.pkh` and a `.pk` but **no `.pfs`**: there is no name tree, so the archive knows
+where each file sits and not what it is called.
+
+That is why they sat unopened for several sessions, and why they kept being
+listed as the likely home of every resource reference that could not be
+resolved. They are not. `parse_nested_packs.py --verify` settles it two ways.
+
+**The names are recoverable.** The path hash is CRC-32/BZIP2 (above), so a name
+can be *proposed* instead of read: hash a candidate and check whether it is
+present. Hashing all 47,204 paths from the top-level `filesystem.pfs`:
+
+| Key form tried | Nested hashes it accounts for |
+|---|---|
+| **full path** | **19,703 — 100.0 %** |
+| leading slash | 0 |
+| basename | 2 |
+| basename, no extension | 1 |
+
+Every distinct hash in every nested pack is a path that already exists in
+`filesystem`. Not most — all.
+
+**The bytes are the same.** Across a 400-entry sample drawn from packs
+throughout both trees, **400 of 400** decompress byte-identical to the
+`filesystem` copy.
+
+So the nested packs are a **per-level duplication of shared content**: 106,902
+entries covering only 19,703 distinct files, an average of 5.4 copies each, laid
+out so a level streams from one contiguous archive instead of seeking across the
+global one. Ordinary practice for optical media — and it means there is nothing
+new inside, and nothing there can explain a dangling reference.
+
+The four textures `.eff` materials ask for and the disc does not contain
+(`Mb243_fire`, `Mb243_hei`, `Mb243_wave`, `eff_swd01o`) are therefore simply
+**absent**, like the two author typos in [17](17-eff-binary.md) — references to
+assets deleted before release.
+
+```
+python parse_nested_packs.py            # inventory + type histogram
+python parse_nested_packs.py --verify   # the two checks above
+python parse_nested_packs.py --list ev0101
+```
