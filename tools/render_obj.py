@@ -88,7 +88,17 @@ def render_view(V, VT, F, facemat, mtl, size, ay, ax=0.35, cull=0.30,
     z = P[:, 2]
 
     img = np.full((size, size, 3), 235, np.uint8)
-    zbuf = np.full((size, size), 1e9)
+    # The viewer sits at +z: the backface cull below says so, keeping faces with
+    # n[2] > 0. The depth test must use the SAME convention, i.e. larger z wins.
+    # With rot() the world's +Y maps to a positive view z, so with the test the
+    # other way round the terrain covered whatever stood on it.
+    #
+    # This stayed latent for three sessions because everything rendered until
+    # now was a single closed object: with backface culling each pixel has
+    # exactly one front-facing triangle, so the depth test never decides
+    # anything. It only shows up with separate objects at different depths --
+    # a character standing on terrain.
+    zbuf = np.full((size, size), -1e9)
     light = np.array([0.3, 0.5, 0.8]); light = light / np.linalg.norm(light)
 
     cull_edge = size * cull if cull else 1e9   # 0 = no culling (honest check)
@@ -128,7 +138,7 @@ def render_view(V, VT, F, facemat, mtl, size, ay, ax=0.35, cull=0.30,
             continue
         zz = w0 * za[0] + w1 * za[1] + w2 * za[2]
         sub = zbuf[miny:maxy + 1, minx:maxx + 1]
-        mask = inside & (zz < sub)
+        mask = inside & (zz > sub)
         if not mask.any():
             continue
         if tex is not None and VT is not None:

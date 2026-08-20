@@ -146,13 +146,32 @@ Cross-check on `dg001_01`, where the floor level matters most:
 | **Y** | **−29.5** … 167.7 | **−28.1** … 104.5 |
 | Z | −344.4 … 505.7 | −490.0 … 677.0 |
 
-## Two rendering traps
+## Three rendering traps
 
 **Winding.** Map floors are wound with the normal pointing **down**. Verified by
 hand on a courtyard quad of `dg001_01`: `e1 × e2 = (0, −459.8, 0)`. Viewed from
 above they are backfaces, so a renderer with backface culling drops every floor
 in the level and characters appear to walk on nothing. Render map geometry
 two-sided.
+
+**Depth vs winding, in the renderer itself.** `render_obj.py` culled backfaces
+with `n[2] < 0` — which places the viewer at **+z** — while its depth test kept
+the *smaller* z, which places the viewer at **−z**. The two conventions
+contradicted each other. Since `rot()` maps world **+Y to a positive view z**,
+"higher up" counted as "farther away", and the ground won the depth test against
+anything standing on it: a character on a floor was drawn *underneath* it.
+
+It stayed invisible for three sessions because everything rendered until then
+was a single closed object. With backface culling, a convex closed mesh has
+exactly one front-facing triangle per pixel, so the depth test never decides
+anything — the cat and the character models looked correct either way. The bug
+only surfaces with **separate objects at different depths**, which is precisely
+what putting a character on terrain creates. Fixed by initialising the z-buffer
+to `-inf` and keeping the larger z.
+
+Worth stating because it is the general shape of the trap: a renderer can be
+self-inconsistent and still look right on every test case you have, until the
+first case that actually exercises the inconsistency.
 
 **Degenerate triangles.** The terrain decode leaves slivers — 201 of 4707
 triangles on `dg001_01`'s terrain, 1668 of 71,491 on the full scene. They have
@@ -237,8 +256,42 @@ character's lowest vertex stays between **4.839 and 5.051** against a floor at
 **Y = 5.000** — within ±1.6 cm at 1 u ≈ 10 cm, with no offset applied. The
 model's origin *is* its ground contact point.
 
+### The state machine
+
+`--plan` plays a sequence of states, each bringing its own clip, period and
+speed — all read from the data, none copied between states:
+
+| State | Clip | Period | Speed |
+|---|---|---|---|
+| `CH_WTN00` | `na000_wtn00_00` | 60 | 0 u/s — standing still |
+| `CH_WKN00` | `na000_wkn00_00` | 54 | 5.42 u/s (0.54 m/s) |
+| `CH_RNN00` | `na000_rnn00_00` | 24 | 21.2 u/s (2.12 m/s) |
+
+Phase restarts at 0 on each switch. A real engine would cross-fade the clips;
+this does not, and it is the one place the PoC visibly reads as "not from the
+game".
+
+### Two things the camera needs
+
+**A follow camera must keep the span constant.** What makes framing wobble is
+recomputing the span per frame, not the centre moving. Fix the span and let the
+centre track the character and the result is stable.
+
+**Cut the ceiling.** At a 30–50° camera angle, upper floors and roofs land
+between the camera and the character and hide them completely. This is the same
+problem the game solves with `HIDE_BIRDVIEW`, and the minimal fix is the same
+idea: do not draw faces above the character's head, with the threshold moving
+with them.
+
+Note also that the automatic path finder is a heuristic. Weighting run length by
+the minimum terrain density along the route stops it choosing the empty fringes
+at the map edge, but it can still land somewhere the camera cannot see into.
+Pass an explicit start when the framing matters.
+
 ```
 python walk_poc.py                                    # walk on dg001_01
 python walk_poc.py --state run --props                # run, full scene
+python walk_poc.py --plan "idle:16,walk:48,run:32"    # the state machine
 python walk_poc.py --x -258.5 --z -60 --dir 270       # explicit start
+python walk_poc.py --fixed-cam                        # fixed instead of follow
 ```
