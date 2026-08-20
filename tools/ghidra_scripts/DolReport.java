@@ -1,6 +1,6 @@
-// Ghidra postScript (Java): esporta elenco funzioni e riferimenti a stringhe chiave.
-// Uso: analyzeHeadless <proj> TLS -process main.dol -noanalysis \
-//      -scriptPath tools\ghidra_scripts -postScript DolReport.java <outdir>
+// Ghidra postScript (Java): exports the function list and the references to key strings.
+// Usage: analyzeHeadless <proj> TLS -process main.dol -noanalysis \
+//        -scriptPath tools/ghidra_scripts -postScript DolReport.java <outdir>
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.symbol.Reference;
@@ -16,22 +16,22 @@ public class DolReport extends GhidraScript {
         FunctionManager fm = currentProgram.getFunctionManager();
 
         int nf = 0;
-        PrintWriter pf = new PrintWriter(outdir + "\\functions.txt", "UTF-8");
+        PrintWriter pf = new PrintWriter(outdir + "/functions.txt", "UTF-8");
         for (Function fn : fm.getFunctions(true)) {
             pf.printf("%08x  %8d  %s%n", fn.getEntryPoint().getOffset(),
                     fn.getBody().getNumAddresses(), fn.getName());
             nf++;
         }
         pf.close();
-        println("funzioni: " + nf);
+        println("functions: " + nf);
 
         String[] keys = {"DebugMenu", "BootSequence", "DebugMenuType", "Neko",
                 "ai_table.csv", "boot/", ".pkh", "chnkdata", "wii text",
                 "SequenceDebugMenu", "Tools_", "config.ini", "revision.txt"};
 
-        PrintWriter ps = new PrintWriter(outdir + "\\string_refs.txt", "UTF-8");
+        PrintWriter ps = new PrintWriter(outdir + "/string_refs.txt", "UTF-8");
         DataIterator di = currentProgram.getListing().getDefinedData(true);
-        // pre-raccogli stringhe definite
+        // pre-collect the defined strings
         List<Object[]> strs = new ArrayList<>();
         while (di.hasNext()) {
             Data dt = di.next();
@@ -40,7 +40,7 @@ public class DolReport extends GhidraScript {
             if (!(v instanceof String)) continue;
             strs.add(new Object[]{dt.getAddress(), (String) v});
         }
-        println("stringhe definite: " + strs.size());
+        println("defined strings: " + strs.size());
 
         for (String kw : keys) {
             ps.println("=== \"" + kw + "\" ===");
@@ -62,6 +62,6 @@ public class DolReport extends GhidraScript {
             ps.println();
         }
         ps.close();
-        println("scritti functions.txt, string_refs.txt in " + outdir);
+        println("wrote functions.txt and string_refs.txt to " + outdir);
     }
 }

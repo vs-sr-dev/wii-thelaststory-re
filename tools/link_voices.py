@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-link_voices.py - Chiude il loop TESTO <-> VOCE di The Last Story.
+link_voices.py - Closes the TEXT <-> VOICE loop of The Last Story.
 
-Il DB dialoghi (dialogue_db/*.tsv) ha una colonna 'voice' con il voiceID
-(es. VO_PLD001_0010). Gli stream .brstm hanno esattamente quel nome.
-Questo tool aggancia ogni battuta doppiata alla sua clip:
+The dialogue DB (dialogue_db/*.tsv) has a 'voice' column holding the voiceID
+(e.g. VO_PLD001_0010). The .brstm streams carry exactly that name.
+This tool hooks every voiced line to its clip:
 
-  - legge audio/manifest.csv (durata/sr/canali di ogni stream)
-  - per ogni riga con voice valido, verifica l'esistenza dello stream e
-    (se convertito) del .ogg in audio/vo/
-  - produce dialogue_db/voiced_lines.tsv : catalogo unico di TUTTE le battute
-    doppiate, con scene, personaggio, voiceID, ogg path, durata, testo 6 lingue.
-  - stampa statistiche di copertura.
-
-Prima assoluta pubblica: testo + voce affiancati per un gioco mai documentato.
+  - reads audio/manifest.csv (duration/sample rate/channels of each stream)
+  - for every row with a valid voice, checks that the stream exists and, if it has
+    been converted, that the .ogg is in audio/vo/
+  - writes dialogue_db/voiced_lines.tsv: a single catalogue of EVERY voiced line,
+    with scene, character, voiceID, ogg path, duration and the text in 6 languages
+  - prints coverage statistics.
 """
 import os, csv, glob, sys
 
@@ -95,15 +93,15 @@ def main():
         w.writeheader()
         w.writerows(out_rows)
 
-    print(f"righe DB totali        : {n_lines}")
-    print(f"battute doppiate (VO/SE): {n_voiced}")
-    print(f"  con stream .brstm     : {n_matched}  ({100*n_matched/max(1,n_voiced):.1f}%)")
-    print(f"  con .ogg convertito   : {n_ogg}")
-    print(f"voiced_lines.tsv        : {out}  ({len(out_rows)} righe)")
+    print(f"total DB rows           : {n_lines}")
+    print(f"voiced lines (VO/SE)    : {n_voiced}")
+    print(f"  with a .brstm stream  : {n_matched}  ({100*n_matched/max(1,n_voiced):.1f}%)")
+    print(f"  with a converted .ogg : {n_ogg}")
+    print(f"voiced_lines.tsv        : {out}  ({len(out_rows)} rows)")
     distinct_missing = sorted(set(v for _, v in missing))
-    print(f"voiceID senza stream    : {len(distinct_missing)} distinti")
+    print(f"voiceIDs with no stream : {len(distinct_missing)} distinct")
     if distinct_missing:
-        print("  esempi:", distinct_missing[:12])
+        print("  examples:", distinct_missing[:12])
 
 if __name__ == '__main__':
     main()

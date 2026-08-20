@@ -50,7 +50,7 @@ def main():
     frames = list(range(N))
     tr = trajectory(md, model, ad, mot, watch, frames)
 
-    # ---- 0a: avanzamento netto della root -------------------------------
+    # ---- 0a: the root's net advance -------------------------------------
     print("--- world trajectory (frame 0 / mid / N-1) ---")
     for b in watch:
         p = tr[b]

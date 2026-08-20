@@ -1,5 +1,5 @@
-// Ghidra postScript: elenca i chiamanti (call sites) di una lista di funzioni.
-// Uso: -postScript DolCallers.java <addr1> [<addr2> ...]
+// Ghidra postScript: lists the callers (call sites) of a list of functions.
+// Usage: -postScript DolCallers.java <addr1> [<addr2> ...]
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.address.Address;
@@ -14,7 +14,7 @@ public class DolCallers extends GhidraScript {
             Address a = currentProgram.getAddressFactory().getAddress(s);
             Function fn = getFunctionAt(a);
             String nm = fn != null ? fn.getName() : "?";
-            println("== chiamanti di " + nm + " @ " + s + " ==");
+            println("== callers of " + nm + " @ " + s + " ==");
             for (Reference r : getReferencesTo(a)) {
                 if (r.getReferenceType().isCall() || r.getReferenceType().isFlow()
                         || r.getReferenceType() == RefType.DATA) {

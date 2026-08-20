@@ -1,5 +1,5 @@
-// Ghidra postScript (Java): decompila una lista di funzioni (per indirizzo) in un file.
-// Uso: -postScript DolDecomp.java <outfile> <addr1> <addr2> ...
+// Ghidra postScript (Java): decompiles a list of functions (by address) into a file.
+// Usage: -postScript DolDecomp.java <outfile> <addr1> <addr2> ...
 import ghidra.app.script.GhidraScript;
 import ghidra.app.decompiler.*;
 import ghidra.program.model.listing.Function;
@@ -18,7 +18,7 @@ public class DolDecomp extends GhidraScript {
             Address a = currentProgram.getAddressFactory().getAddress(args[i]);
             Function fn = getFunctionContaining(a);
             if (fn == null) {
-                pw.println("// nessuna funzione @ " + args[i]);
+                pw.println("// no function @ " + args[i]);
                 continue;
             }
             pw.println("// ===== " + fn.getName() + " @ " +
@@ -27,11 +27,11 @@ public class DolDecomp extends GhidraScript {
             if (res.decompileCompleted()) {
                 pw.println(res.getDecompiledFunction().getC());
             } else {
-                pw.println("// decompile fallito: " + res.getErrorMessage());
+                pw.println("// decompilation failed: " + res.getErrorMessage());
             }
             pw.println();
         }
         pw.close();
-        println("scritto " + outfile);
+        println("wrote " + outfile);
     }
 }

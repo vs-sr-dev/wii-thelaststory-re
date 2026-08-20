@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-build_audio_manifest.py - Manifest di tutti gli stream .brstm (audio/manifest.csv).
+build_audio_manifest.py - Manifest of every .brstm stream (audio/manifest.csv).
 
-Legge l'header RSTM di ogni file (via rstm_info) e produce una tabella con
-categoria, codec, canali, sample rate, loop, durata. Nessun subprocess.
+Reads each file's RSTM header (through rstm_info) and writes a table with
+category, codec, channels, sample rate, loop and duration. No subprocesses.
 """
 import os, csv, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,16 +45,16 @@ def main():
             s = stats.setdefault(m, [0, 0.0, 0])
             s[0] += 1; s[1] += info['seconds']; s[2] += sz
 
-    print(f"file processati : {len(files)-n_err}  (errori: {n_err})")
+    print(f"files processed : {len(files)-n_err}  (errors: {n_err})")
     print(f"manifest        : {out}")
-    print(f"{'macro':10} {'n':>6} {'durata':>12} {'MB':>8}")
+    print(f"{'macro':10} {'n':>6} {'duration':>12} {'MB':>8}")
     tot = [0, 0.0, 0]
     for m, (n, sec, b) in sorted(stats.items()):
         h = int(sec // 3600); mm = int((sec % 3600)//60); ss = int(sec % 60)
         print(f"{m:10} {n:6} {h:3}h{mm:02}m{ss:02}s {b/1048576:8.1f}")
         tot[0]+=n; tot[1]+=sec; tot[2]+=b
     h=int(tot[1]//3600); mm=int((tot[1]%3600)//60); ss=int(tot[1]%60)
-    print(f"{'TOTALE':10} {tot[0]:6} {h:3}h{mm:02}m{ss:02}s {tot[2]/1048576:8.1f}")
+    print(f"{'TOTAL':10} {tot[0]:6} {h:3}h{mm:02}m{ss:02}s {tot[2]/1048576:8.1f}")
 
 if __name__ == '__main__':
     main()

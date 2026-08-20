@@ -83,7 +83,7 @@ overlapping, equal.
 
 ```
 python parse_hcb.py --check
-  PUNTATORI = RILOCAZIONI                388/388
+  POINTERS == RELOCATIONS                388/388
 ```
 
 They match exactly on every file. A single field placed wrongly — the material

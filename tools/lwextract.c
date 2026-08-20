@@ -1,9 +1,12 @@
-/* lwextract - estrattore pack LastWorld (The Last Story, Wii)
+/* lwextract - LastWorld pack extractor (The Last Story, Wii)
  *
- * Uso: lwextract <file.pk> <manifest.txt> <outdir>
- * Manifest: righe "offset|compSize|uncSize|percorso/relativo"
- *           compSize==0 -> file non compresso (uncSize byte raw)
- *           altrimenti LZ11 Nintendo (magic 0x11 + size 24bit LE)
+ * Usage: lwextract <file.pk> <manifest.txt> <outdir>
+ * Manifest: lines of "offset|compSize|uncSize|relative/path"
+ *           compSize==0 -> stored uncompressed (uncSize raw bytes)
+ *           otherwise Nintendo LZ11 (magic 0x11 + 24-bit LE size)
+ *
+ * Windows-only as written: it uses <direct.h>, _mkdir and _fseeki64.
+ * On POSIX swap those for <sys/stat.h>, mkdir(path, 0755) and fseeko.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,7 +72,7 @@ static long lz11_decompress(const uint8_t *in, size_t in_len,
 
 int main(int argc, char **argv) {
     if (argc != 4) {
-        fprintf(stderr, "uso: lwextract <file.pk> <manifest.txt> <outdir>\n");
+        fprintf(stderr, "usage: lwextract <file.pk> <manifest.txt> <outdir>\n");
         return 1;
     }
     FILE *pk = fopen(argv[1], "rb");
@@ -113,7 +116,7 @@ int main(int argc, char **argv) {
         fclose(out);
         n_ok++;
     }
-    printf("estratti %ld file, %ld errori\n", n_ok, n_err);
+    printf("extracted %ld files, %ld errors\n", n_ok, n_err);
     fclose(pk); fclose(mf);
     return n_err ? 2 : 0;
 }

@@ -1,5 +1,5 @@
-// Ghidra preScript (Java): carica un DOL GameCube/Wii mappando le sezioni
-// agli indirizzi corretti, poi lascia partire l'auto-analysis.
+// Ghidra preScript (Java): loads a GameCube/Wii DOL, mapping the sections to
+// their correct addresses, then lets auto-analysis run.
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSpace;
@@ -20,7 +20,7 @@ public class DolLoad extends GhidraScript {
     public void run() throws Exception {
         String[] args = getScriptArgs();
         String dolPath = (args.length > 0) ? args[0]
-                : "extract\\sys\\main.dol";
+                : "extract/sys/main.dol";
         byte[] d = Files.readAllBytes(Paths.get(dolPath));
 
         Memory mem = currentProgram.getMemory();
@@ -29,10 +29,10 @@ public class DolLoad extends GhidraScript {
         }
         AddressSpace space = currentProgram.getAddressFactory().getDefaultAddressSpace();
 
-        // 7 sezioni text + 11 data
+        // 7 text sections + 11 data
         for (int i = 0; i < 18; i++) {
             boolean isText = i < 7;
-            int base = isText ? 0x00 : 0x1C - 7 * 4;   // data indicizza da i=7
+            int base = isText ? 0x00 : 0x1C - 7 * 4;   // data is indexed from i=7
             int idx = i;
             long off, addr, size;
             if (isText) {
@@ -58,8 +58,8 @@ public class DolLoad extends GhidraScript {
             println(String.format("block %-6s @ %08x size 0x%x", name, addr, size));
         }
 
-        // BSS: nel DOL il range dichiarato puo' sovrapporsi a sezioni dati gia'
-        // mappate (data6/data7). Creo il BSS solo nei buchi liberi.
+        // BSS: in the DOL the declared range can overlap data sections that are
+        // already mapped (data6/data7), so only create BSS in the free gaps.
         long bssAddr = u32(d, 0xD8);
         long bssSize = u32(d, 0xDC);
         if (bssSize != 0) {
@@ -70,10 +70,10 @@ public class DolLoad extends GhidraScript {
                 Address a = space.getAddress(cur);
                 MemoryBlock hit = mem.getBlock(a);
                 if (hit != null) {
-                    cur = hit.getEnd().getOffset() + 1;   // salta il blocco occupato
+                    cur = hit.getEnd().getOffset() + 1;   // skip the occupied block
                     continue;
                 }
-                // estende il buco fino al prossimo blocco o a end
+                // extend the gap up to the next block, or to end
                 long gapEnd = end;
                 for (MemoryBlock b : mem.getBlocks()) {
                     long bs = b.getStart().getOffset();

@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-parse_rsid.py - Parser della tabella-registro sonora dell'engine di The Last Story.
+parse_rsid.py - Parser for the sound registry table of The Last Story's engine.
 
-LastWorld.rsid.csv (sound/) e' la tabella RSID: mappa il nome simbolico che il
-codice usa per richiedere un suono (es. BGM_BATT101, VO_PLD001_0010) all'indice
-numerico globale con cui l'engine lo indirizza.
+LastWorld.rsid.csv (sound/) is the RSID table: it maps the symbolic name the code
+uses to request a sound (e.g. BGM_BATT101, VO_PLD001_0010) to the global numeric
+index the engine addresses it by.
 
-Formato riga (CSV, 14171 righe):  NAME,idx1,idx2,flag,
-  NAME  = nome simbolico (VO_/SE_/BGM_/STRM_/GROUP_/PLAYER_/SYSTR_/SEQBNK_/DEFAULT)
-  idx1  = indice RSID globale (0..~14000, NON perfettamente sequenziale: le voci
-          GROUP/PLAYER/SEQBNK hanno numerazione propria intercalata)
-  idx2  = sotto-indice (indice dentro il player/sotto-tabella della categoria)
-  flag  = '1' su 2114 voci, altrimenti vuoto -> marca (probabile) "streamed"
-  [5a col vuota per la virgola finale]
+Row format (CSV, 14171 rows):  NAME,idx1,idx2,flag,
+  NAME  = symbolic name (VO_/SE_/BGM_/STRM_/GROUP_/PLAYER_/SYSTR_/SEQBNK_/DEFAULT)
+  idx1  = global RSID index (0..~14000, NOT perfectly sequential: GROUP/PLAYER/
+          SEQBNK entries have their own numbering interleaved)
+  idx2  = sub-index (index inside the category's player/sub-table)
+  flag  = '1' on 2114 entries, empty otherwise -> (probably) marks "streamed"
+  [5th column empty, from the trailing comma]
 
-Output: audio/rsid_table.csv con colonna is_stream (il NAME esiste come .brstm).
+Output: audio/rsid_table.csv with an is_stream column (the NAME exists as a .brstm).
 """
 import csv, os, sys, collections
 
@@ -51,18 +51,18 @@ def main():
                     'category', 'is_stream_file'])
         w.writerows(rows)
 
-    # riepilogo
+    # summary
     cat = collections.Counter(r[4] for r in rows)
     is_stream = sum(1 for r in rows if r[5] == '1')
     flagged = sum(1 for r in rows if r[3] == '1')
-    print(f"righe rsid          : {len(rows)}")
-    print(f"scritte in          : {out}")
-    print(f"categorie           : {dict(cat.most_common())}")
+    print(f"rsid rows           : {len(rows)}")
+    print(f"written to          : {out}")
+    print(f"categories          : {dict(cat.most_common())}")
     print(f"flag=1 (streamed?)  : {flagged}")
-    print(f"NAME e' un .brstm   : {is_stream}  (gli altri vivono nel brsar/bank)")
-    # correlazione flag<->is_stream_file
+    print(f"NAME is a .brstm    : {is_stream}  (the rest live in the brsar/bank)")
+    # correlation flag <-> is_stream_file
     both = sum(1 for r in rows if r[3] == '1' and r[5] == '1')
-    print(f"flag=1 AND stream   : {both}  (flag=1 ma non-stream: {flagged-both})")
+    print(f"flag=1 AND stream   : {both}  (flag=1 but not a stream: {flagged-both})")
 
 if __name__ == '__main__':
     main()

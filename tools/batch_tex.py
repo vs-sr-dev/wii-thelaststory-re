@@ -1,4 +1,4 @@
-"""Batch: istogramma formati (modo 'hist') o conversione completa (.texture -> PNG)."""
+"""Batch: format histogram (mode 'hist') or a full conversion (.texture -> PNG)."""
 import sys
 import os, struct, sys, glob
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -8,8 +8,8 @@ u32 = lambda d, o: struct.unpack('>I', d[o:o+4])[0]
 FMT_NAME = {0:'I4',1:'I8',2:'IA4',3:'IA8',4:'RGB565',5:'RGB5A3',6:'RGBA8',
             8:'C4',9:'C8',0xA:'C14X2',0xE:'CMPR'}
 
-ASSETS = os.path.join(os.environ.get('TLS_ROOT', '.'), r'assets')
-OUT = os.path.join(os.environ.get('TLS_ROOT', '.'), r'textures_png')
+ASSETS = os.path.join(os.environ.get('TLS_ROOT', '.'), 'assets')
+OUT = os.path.join(os.environ.get('TLS_ROOT', '.'), 'textures_png')
 
 def all_textures():
     for root, dirs, fs in os.walk(ASSETS):
@@ -26,7 +26,7 @@ def hist():
         if head[:8] != b'chnkdata':
             nonchnk += 1; continue
         c[u32(head, 0x20)] += 1
-    print(f'texture totali: {total}, non-chnkdata: {nonchnk}')
+    print(f'total textures: {total}, non-chnkdata: {nonchnk}')
     for fmt, n in c.most_common():
         print(f'  fmt {fmt:2d} {FMT_NAME.get(fmt,"?"):8s}: {n}')
 
@@ -53,8 +53,8 @@ def convert_all(limit=None):
             if err <= 10:
                 print('ERR', rel, e)
         if ok and ok % 500 == 0:
-            print(f'  ... {ok} convertite', flush=True)
-    print(f'FATTO: ok={ok} skip={skip} err={err}')
+            print(f'  ... {ok} converted', flush=True)
+    print(f'DONE: ok={ok} skip={skip} err={err}')
 
 if __name__ == '__main__':
     mode = sys.argv[1] if len(sys.argv) > 1 else 'hist'

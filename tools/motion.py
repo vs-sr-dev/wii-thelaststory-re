@@ -114,7 +114,7 @@ def parse_file(path):
 
 
 # --------------------------------------------------------------------------
-# valutazione delle curve
+# curve evaluation
 # --------------------------------------------------------------------------
 def _hermite(v0, m0, v1, m1, dt, u):
     """Cubic Hermite; m0/m1 are d(value)/d(frame), dt = frames between keys."""

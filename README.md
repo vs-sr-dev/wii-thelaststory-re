@@ -46,6 +46,27 @@ pipelines are documented with working extractors. Highlights:
 
 Full details are in [`docs/`](docs/).
 
+## What is *not* solved
+
+Kept here deliberately, because a format note is only useful if it says where it
+stops:
+
+- **Collision material flags.** The per-triangle flag word in `.hocb`/`.hcb` is
+  read and dumped, but its bits are not identified. The `.hcb` "type" field in
+  particular is demonstrably *not* a surface type.
+- **The 22 `.eff` curve channels.** Curves are decoded and their keying is proven,
+  but which channel drives which visual parameter is unknown. An attempted
+  pairing with static emitter parameters was tested and **ruled out**.
+- **`.gmk` `TRIGGER` types 2–6** and the `PATH_POINT` opcode: seen, counted, not
+  interpreted.
+- **The `.hocb` `0x003` tail.** Present in every file, parsed as bytes, unread.
+- **`levels/` and `eventpacks/`.** Not a new format, but these packs are the
+  likely home of most of the dangling asset references found elsewhere.
+
+The natural next step for several of these is `main.dol` itself: the `.eff`
+reader is the most promising target, since a little-endian format on a
+big-endian machine must leave a visible byteswap or a distinct load path.
+
 ## Documentation
 
 | Doc | Topic |

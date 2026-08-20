@@ -1,7 +1,7 @@
-"""Estrae tutti i pack (o un sottoinsieme) usando lwextract.exe.
+"""Extracts every pack (or a subset) using lwextract.exe.
 
-Uso: python extract_all.py [pattern-stem ...]
-     senza argomenti: tutti i 21 pack.
+Usage: python extract_all.py [stem ...]
+       with no arguments: all 21 packs.
 """
 import os
 import sys, os, subprocess, struct
@@ -37,16 +37,16 @@ for sub, name in stems:
     with open(man, 'w', encoding='ascii') as f:
         for path in files:
             e = by_hash.get(path_hash(path))
-            if e is None:            # nome con byte non-ASCII (placeholder '?')
+            if e is None:            # name with non-ASCII bytes (placeholder '?')
                 skipped += 1
                 continue
             h, off, unc, comp = e
             f.write(f'{off}|{comp}|{unc}|{path}\n')
     if skipped:
-        print(f'   (saltati {skipped} nomi non-ASCII)')
+        print(f'   (skipped {skipped} non-ASCII names)')
     outdir = os.path.join(OUT, sub, name)
     os.makedirs(outdir, exist_ok=True)
-    print(f'== {sub}/{name}: {len(files) - skipped} file ==', flush=True)
+    print(f'== {sub}/{name}: {len(files) - skipped} files ==', flush=True)
     r = subprocess.run([EXE, stem + '.pk', man, outdir], capture_output=True, text=True)
     print(r.stdout.strip())
     if r.stderr:

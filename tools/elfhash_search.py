@@ -1,8 +1,8 @@
-"""Ricava la funzione hash usata da .sel/.rso e cerca simboli debug in main.dol."""
+"""Recovers the hash function used by .sel/.rso and hunts debug symbols in main.dol."""
 import os
 import struct
 
-# coppie note (nome, hash) dagli export del .sel e dell'RSO
+# known (name, hash) pairs from the .sel and RSO exports
 known = [
     ('OSReport', 0x088c73d4), ('strlen', 0x07ab92be), ('memcpy', 0x073c3a79),
     ('_SDA_BASE_', 0x0730202f), ('_SDA2_BASE_', 0x08521fef),
@@ -22,17 +22,17 @@ def elf_hash(s):
     return h & 0xffffffff
 
 def elf_hash_masked(s):
-    # variante con mask 0x0fffffff (i valori noti sono < 0x10000000)
+    # variant masked with 0x0fffffff (the known values are all < 0x10000000)
     return elf_hash(s) & 0x0fffffff
 
 ok = all(elf_hash_masked(n) == h for n, h in known)
-print('ELF hash (masked 0x0fffffff) combacia con i noti:', ok)
+print('ELF hash (masked 0x0fffffff) matches the known values:', ok)
 if not ok:
     for n, h in known:
-        print(f'  {n:24s} atteso={h:#010x} calc={elf_hash_masked(n):#010x}')
+        print(f'  {n:24s} expected={h:#010x} got={elf_hash_masked(n):#010x}')
 
-# se combacia, hasha i simboli debug-target e cercali in main.dol
-d = open(os.path.join(os.environ.get('TLS_ROOT', '.'), r'extract\sys\main.dol'), 'rb').read()
+# if it matches, hash the debug target symbols and look for them in main.dol
+d = open(os.path.join(os.environ.get('TLS_ROOT', '.'), 'extract', 'sys', 'main.dol'), 'rb').read()
 words_un = set()
 for i in range(len(d)-3):
     words_un.add(struct.unpack('>I', d[i:i+4])[0])
@@ -44,8 +44,8 @@ targets = [
     'SetTask__11BattleDebugFPQ23atn4Task',
     'instance___11CharaSelect',
 ]
-print('\nricerca hash target in main.dol:')
+print('\nsearching for the target hashes in main.dol:')
 for t in targets:
     h = elf_hash_masked(t)
-    loc = 'TROVATO' if h in words_un else 'assente'
+    loc = 'FOUND  ' if h in words_un else 'absent '
     print(f'  {h:#010x}  {loc}  {t}')

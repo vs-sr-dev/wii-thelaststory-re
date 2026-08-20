@@ -1,8 +1,8 @@
-"""Decoder texture GX (GameCube/Wii) -> RGBA. Gestisce il tiling a blocchi.
+"""GX (GameCube/Wii) texture decoder -> RGBA. Handles the block tiling.
 
-Formati GX: 0=I4 1=I8 2=IA4 3=IA8 4=RGB565 5=RGB5A3 6=RGBA8 8=C4 9=C8 0xE=CMPR.
-Ogni formato ha una geometria di blocco (tile) diversa; i pixel sono memorizzati
-tile-per-tile in ordine raster, e dentro il tile in ordine raster.
+GX formats: 0=I4 1=I8 2=IA4 3=IA8 4=RGB565 5=RGB5A3 6=RGBA8 8=C4 9=C8 0xE=CMPR.
+Each format has its own block (tile) geometry; pixels are stored tile by tile in
+raster order, and inside a tile in raster order too.
 """
 import struct
 
@@ -16,19 +16,19 @@ def rgb565(v):
     return (r, g, b, 255)
 
 def rgb5a3(v):
-    if v & 0x8000:  # opaco RGB555
+    if v & 0x8000:  # opaque RGB555
         r = _c5to8((v >> 10) & 0x1f); g = _c5to8((v >> 5) & 0x1f); b = _c5to8(v & 0x1f)
         return (r, g, b, 255)
     a = ((v >> 12) & 7); a = (a << 5) | (a << 2) | (a >> 1)
     r = _c4to8((v >> 8) & 0xf); g = _c4to8((v >> 4) & 0xf); b = _c4to8(v & 0xf)
     return (r, g, b, a)
 
-# (block_w, block_h) per formato
+# (block_w, block_h) per format
 BLOCK = {0: (8, 8), 1: (8, 4), 2: (8, 4), 3: (4, 4), 4: (4, 4),
          5: (4, 4), 6: (4, 4), 0xE: (8, 8)}
 
 def decode(fmt, w, h, data):
-    """Ritorna bytearray RGBA (w*h*4)."""
+    """Return an RGBA bytearray (w*h*4)."""
     out = bytearray(w * h * 4)
     def put(x, y, rgba):
         if x < w and y < h:
@@ -69,14 +69,14 @@ def decode(fmt, w, h, data):
                     for tx in range(bw):
                         v = struct.unpack('>H', data[pos:pos+2])[0]; pos += 2
                         put(bx+tx, by+ty, rgb5a3(v))
-            elif fmt == 6:  # RGBA8 (blocchi 4x4, due sub-blocchi: AR poi GB)
+            elif fmt == 6:  # RGBA8 (4x4 blocks, two sub-blocks: AR then GB)
                 ar = data[pos:pos+32]; gb = data[pos+32:pos+64]; pos += 64
                 for ty in range(4):
                     for tx in range(4):
                         j = (ty*4+tx)*2
                         a = ar[j]; r = ar[j+1]; g = gb[j]; b = gb[j+1]
                         put(bx+tx, by+ty, (r, g, b, a))
-            elif fmt == 0xE:  # CMPR (DXT1-like, tile 8x8 = 4 sub-blocchi 4x4)
+            elif fmt == 0xE:  # CMPR (DXT1-like, 8x8 tile = 4 sub-blocks of 4x4)
                 for sy in range(0, 8, 4):
                     for sx in range(0, 8, 4):
                         c0 = struct.unpack('>H', data[pos:pos+2])[0]

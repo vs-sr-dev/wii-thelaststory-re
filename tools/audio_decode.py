@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 """
-audio_decode.py - Convertitore batch degli stream BRSTM di The Last Story.
+audio_decode.py - Batch converter for The Last Story's BRSTM streams.
 
-Wrappa vgmstream-cli. Decodifica DSP-ADPCM (Nintendo) -> WAV, e opzionalmente
-ri-codifica in OGG Vorbis (web-friendly) tramite ffmpeg via pipe (nessun WAV
-temporaneo su disco). Parallelo, resumable (salta gli output gia' presenti).
+Wraps vgmstream-cli. Decodes Nintendo DSP-ADPCM -> WAV, and optionally re-encodes
+to OGG Vorbis (web-friendly) through ffmpeg over a pipe (no temporary WAV hits the
+disk). Parallel and resumable (skips outputs that already exist).
 
-Uso:
-  python tools/audio_decode.py --cat VO --fmt ogg            # tutte le voci -> audio/vo/*.ogg
-  python tools/audio_decode.py --cat BGM --fmt wav           # musica -> WAV (loop ignorato, 1 passata)
+Usage:
+  python tools/audio_decode.py --cat VO --fmt ogg            # every voice clip -> audio/vo/*.ogg
+  python tools/audio_decode.py --cat BGM --fmt wav           # music -> WAV (loop ignored, single pass)
   python tools/audio_decode.py --cat all --fmt ogg -j 12
-  python tools/audio_decode.py --list VO_PLD001_0010 ...     # file specifici
+  python tools/audio_decode.py --list VO_PLD001_0010 ...     # specific files
 
-Categorie: VO, SE, BGM, EV, all.  Formati: ogg (default), wav.
-BGM/EV con loop -> resi in una singola passata pulita (-i) [il loop_start e' nel manifest].
+Categories: VO, SE, BGM, EV, all.  Formats: ogg (default), wav.
+Looping BGM/EV are rendered as one clean pass (-i) [loop_start lives in the manifest].
 """
 import os, sys, argparse, subprocess, concurrent.futures as cf
 
 ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STREAM = os.path.join(ROOT, 'extract', 'files', 'sound', 'stream')
 OUTBASE= os.path.join(ROOT, 'audio')
-# vgmstream sta nello scratchpad di sessione; override via env VGMSTREAM_CLI
 # Path to vgmstream-cli: set the VGMSTREAM_CLI env var, else it must be on PATH.
 VGM = os.environ.get('VGMSTREAM_CLI', 'vgmstream-cli')
 FFMPEG = 'ffmpeg'
@@ -40,7 +39,7 @@ def pick(cat):
     return [f for f in files if macro(f) == cat]
 
 def convert(src, dst, fmt, quality):
-    """src .brstm -> dst (.ogg via pipe, o .wav diretto). Ritorna (dst, ok, err)."""
+    """src .brstm -> dst (.ogg through the pipe, or .wav directly). Returns (dst, ok, err)."""
     tmp = dst + '.part'
     try:
         if fmt == 'wav':
@@ -48,7 +47,7 @@ def convert(src, dst, fmt, quality):
                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             if r.returncode != 0:
                 return (dst, False, r.stderr.decode('utf-8','replace')[:200])
-        else:  # ogg via pipe vgmstream(-p) | ffmpeg
+        else:  # ogg over the vgmstream(-p) | ffmpeg pipe
             p1 = subprocess.Popen([VGM, '-i', '-p', src],
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             p2 = subprocess.Popen([FFMPEG, '-y', '-loglevel', 'error', '-i', '-',
@@ -73,14 +72,14 @@ def main():
     ap.add_argument('--cat', default='VO', choices=['VO','SE','BGM','EV','all'])
     ap.add_argument('--fmt', default='ogg', choices=['ogg','wav'])
     ap.add_argument('-j', '--jobs', type=int, default=10)
-    ap.add_argument('-q', '--quality', default='1', help='qualita OGG Vorbis (-q:a), def 1')
-    ap.add_argument('--list', nargs='*', help='converti file specifici (nomi senza estensione)')
-    ap.add_argument('--limit', type=int, default=0, help='max file (per test)')
+    ap.add_argument('-q', '--quality', default='1', help='OGG Vorbis quality (-q:a), default 1')
+    ap.add_argument('--list', nargs='*', help='convert specific files (names without extension)')
+    ap.add_argument('--limit', type=int, default=0, help='max files (for a quick test)')
     args = ap.parse_args()
 
-    # VGM puo' essere un path esplicito o un comando su PATH: valida solo il primo caso
+    # VGM may be an explicit path or a command on PATH: only validate the first case
     if (os.sep in VGM or (os.altsep and os.altsep in VGM)) and not os.path.exists(VGM):
-        sys.exit(f'vgmstream-cli non trovato: {VGM}\nimposta VGMSTREAM_CLI o mettilo nel PATH')
+        sys.exit(f'vgmstream-cli not found: {VGM}\nset VGMSTREAM_CLI or put it on your PATH')
 
     if args.list:
         names = [n if n.endswith('.brstm') else n+'.brstm' for n in args.list]
@@ -100,11 +99,11 @@ def main():
             continue
         todo.append((os.path.join(STREAM, f), dst))
 
-    print(f"categoria={args.cat if not args.list else 'manual'} fmt={args.fmt} "
-          f"totali={len(names)} da_fare={len(todo)} gia_presenti={len(names)-len(todo)} "
+    print(f"category={args.cat if not args.list else 'manual'} fmt={args.fmt} "
+          f"total={len(names)} todo={len(todo)} already_there={len(names)-len(todo)} "
           f"jobs={args.jobs} -> {outdir}")
     if not todo:
-        print("niente da convertire."); return
+        print("nothing to convert."); return
 
     ok = err = 0; errors = []
     with cf.ThreadPoolExecutor(max_workers=args.jobs) as ex:
@@ -119,10 +118,10 @@ def main():
                 sys.stdout.flush()
     print()
     if errors:
-        print(f"ERRORI ({len(errors)}):")
+        print(f"ERRORS ({len(errors)}):")
         for d, e in errors[:15]:
             print(f"  {os.path.basename(d)}: {e}")
-    print(f"FATTO: ok={ok} err={err}")
+    print(f"DONE: ok={ok} err={err}")
 
 if __name__ == '__main__':
     main()

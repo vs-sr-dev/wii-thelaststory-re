@@ -158,11 +158,11 @@ def main():
         for k, im in enumerate(sel):
             canvas.paste(im, (k*size, 0))
         canvas.save(out)
-        print(f"scritto {out} ({size*n}x{size}, {n} frame)")
+        print(f"wrote {out} ({size*n}x{size}, {n} frames)")
     else:
         imgs[0].save(out, save_all=True, append_images=imgs[1:],
                      duration=int(1000*total/nfrm/fps), loop=0, optimize=True)
-        print(f"scritto {out} ({size}x{size}, {len(imgs)} frame @ {fps:g}fps)")
+        print(f"wrote {out} ({size}x{size}, {len(imgs)} frames @ {fps:g}fps)")
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
-"""Parsa le rilocazioni RSO e mostra cosa importano i thunk Tools_*Exec.
-Rivela per ogni funzione esportata quale import (funzione main.dol) invoca."""
+"""Parses the RSO relocations and shows what the Tools_*Exec thunks import.
+For each exported function it reveals which import (a main.dol function) it calls."""
 import os
 import sys
 import struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-path = os.path.join(os.environ.get('TLS_ROOT', '.'), r'extract\files\LastWorld_tools.rso')
+path = os.path.join(os.environ.get('TLS_ROOT', '.'), 'extract', 'files', 'LastWorld_tools.rso')
 d = open(path, 'rb').read()
 u32 = lambda o: struct.unpack('>I', d[o:o+4])[0]
 
@@ -22,32 +22,32 @@ def cstr(base, rel):
     end = d.index(b'\x00', a)
     return d[a:end].decode('ascii', 'replace')
 
-# sezioni
+# sections
 secs = []
 for i in range(hdr['sectionCount']):
     o = u32(hdr['sectionInfoOffset']+i*8) & ~1
     s = u32(hdr['sectionInfoOffset']+i*8+4)
     secs.append((o, s))
 
-# import: 12 byte (nameOff, relOff, ?) -> nome
+# import: 12 bytes (nameOff, relOff, ?) -> name
 imports = []
 it, isz, ino = hdr['importTableOffset'], hdr['importTableSize'], hdr['importTableNameOff']
 for k, o in enumerate(range(it, it+isz, 12)):
     imports.append(cstr(ino, u32(o)))
 
-# export: 16 byte (nameOff, offset, section, hash)
+# export: 16 bytes (nameOff, offset, section, hash)
 exports = []
 et, esz, eno = hdr['exportTableOffset'], hdr['exportTableSize'], hdr['exportTableNameOff']
 for o in range(et, et+esz, 16):
     exports.append((cstr(eno, u32(o)), u32(o+8), u32(o+4), u32(o+12)))  # name, sec, off, hash
 
-# rilocazioni esterne: formato REL (offset u32, info u32, addend u32) — 12 byte
+# external relocations: REL format (u32 offset, u32 info, u32 addend) — 12 bytes
 # info: (type<<0)|(section<<8)? In REL: r_offset, r_info(type|sym<<8), addend.
-# Per RSO le esterne referenziano l'import index. Proviamo (offset, type, symIdx, addend)?
+# For RSO the external ones reference the import index. Try (offset, type, symIdx, addend)?
 print('=== external relocations (raw, 8-byte REL entries: off, info) ===')
 er, ersz = hdr['externalRelOffset'], hdr['externalRelSize']
-# proviamo entry da 8 byte: off(u32), info(u32) con type=info>>24? o info&0xff
-# In OS REL: struct { u16 offset; u8 type; u8 section; u32 addend; } = 8 byte
+# try 8-byte entries: off(u32), info(u32) with type=info>>24? or info&0xff
+# In OS REL: struct { u16 offset; u8 type; u8 section; u32 addend; } = 8 bytes
 def show(entsize, layout):
     print(f'-- entry {entsize}b {layout} --')
     for o in range(er, min(er+ersz, er+8*20), entsize):
@@ -57,9 +57,9 @@ def show(entsize, layout):
             print(f'  off={off:#06x} type={typ:3d} sec={sec} addend={add:#x}')
 show(8, 'rel8')
 
-print('\n=== EXPORT -> disasm minimale (prime istruzioni del thunk) ===')
+print('\n=== EXPORT -> minimal disassembly (the thunk\'s first instructions) ===')
 def dis_branch(addr_in_sec1):
-    # sezione 1 base file = secs[1][0]
+    # section 1 file base = secs[1][0]
     fo = secs[1][0] + addr_in_sec1
     out = []
     for i in range(6):
@@ -84,7 +84,7 @@ for name, sec, off, h in sorted(exports, key=lambda e: e[2]):
         print(f'  {name} (sec{sec}+{off:#x}):')
         print(dis_branch(off))
 
-print('\nimports totali:', len(imports))
+print('\ntotal imports:', len(imports))
 for i, n in enumerate(imports):
     if 'SequenceDebugMenu' in n or 'DebugMenu' in n:
         print(f'  import[{i}] = {n}')

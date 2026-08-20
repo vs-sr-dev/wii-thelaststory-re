@@ -1,9 +1,10 @@
-"""Parser del formato RSO (Relocatable Shared Object, GameCube/Wii) per LastWorld_tools.rso."""
+"""Parser for the RSO format (Relocatable Shared Object, GameCube/Wii), for LastWorld_tools.rso."""
 import os
 import sys
 import struct, sys
 
-path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.environ.get('TLS_ROOT', '.'), r'extract\files\LastWorld_tools.rso')
+path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
+    os.environ.get('TLS_ROOT', '.'), 'extract', 'files', 'LastWorld_tools.rso')
 d = open(path, 'rb').read()
 u32 = lambda o: struct.unpack('>I', d[o:o+4])[0]
 u8 = lambda o: d[o]
@@ -33,7 +34,7 @@ nm = d[h['nameOffset']:h['nameOffset']+h['nameSize']]
 print(f"module name: {nm!r}")
 
 # section table
-print('\n=== sezioni ===')
+print('\n=== sections ===')
 secs = []
 base = h['sectionInfoOffset']
 for i in range(h['sectionCount']):
@@ -44,7 +45,7 @@ for i in range(h['sectionCount']):
     secs.append((off, size, exec_flag))
     print(f'  sec{i:2d}: off={off:#08x} size={size:#08x} exec={exec_flag}')
 
-# export table: entries di 16 byte (nameOff, offset, section, elfHash)
+# export table: 16-byte entries (nameOff, offset, section, elfHash)
 print('\n=== EXPORT ===')
 et, esz, enameoff = h['exportTableOffset'], h['exportTableSize'], h['exportTableNameOff']
 exports = []
@@ -60,13 +61,12 @@ for o in range(et, et+esz, 16):
 for name, section, offset, ehash in exports:
     print(f'  sec{section} +{offset:#06x} hash={ehash:#010x}  {name}')
 
-# import table: entries di 12 byte (nameOff, relOffset, ...) — provo 12 e 8
-print('\n=== IMPORT (nomi) ===')
+# import table: 12-byte entries (nameOff, relOffset, ...) — try 12 then 8
+print('\n=== IMPORT (names) ===')
 it, isz, inameoff = h['importTableOffset'], h['importTableSize'], h['importTableNameOff']
-# prova entry da 12 byte
 for entsize in (12, 8):
     if isz % entsize == 0:
-        print(f'-- provo entry da {entsize} byte ({isz//entsize} entry) --')
+        print(f'-- trying {entsize}-byte entries ({isz//entsize} entries) --')
         names = []
         for o in range(it, it+isz, entsize):
             name_o = u32(o)

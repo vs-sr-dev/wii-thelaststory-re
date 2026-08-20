@@ -1,13 +1,13 @@
-"""Parser dei pack LastWorld (The Last Story, Wii): .pfs (albero nomi) + .pkh (indice hash) + .pk (dati).
+"""Parser for the LastWorld packs (The Last Story, Wii): .pfs (name tree) + .pkh (hash index) + .pk (data).
 
-Struttura ricostruita per RE:
-  .pfs: header 0x10 (u32: ?, ?, numDirs, numFiles), poi numDirs entry dir da 24 byte
+Layout recovered by RE:
+  .pfs: 0x10 header (u32: ?, ?, numDirs, numFiles), then numDirs 24-byte dir entries
         (nameIdx, parentIdx, firstChildDir, numChildDirs, firstFileIdx, numFiles),
-        poi (numDirs + numFiles) u32 offset nomi, poi string table (base = subito
-        prima della prima stringa, la root ha nome vuoto).
-  .pkh: u32 count, poi count entry da 16 byte (hashPath, offset, uncSize, compSize);
-        ordinate per hash crescente; compSize==0 => file non compresso (uncSize byte).
-  .pk : blob; file compressi in LZ11 Nintendo (magic 0x11 + size 24bit LE).
+        then (numDirs + numFiles) u32 name offsets, then the string table (base =
+        right before the first string; the root has an empty name).
+  .pkh: u32 count, then count 16-byte entries (hashPath, offset, uncSize, compSize);
+        sorted by ascending hash; compSize==0 => stored uncompressed (uncSize bytes).
+  .pk : blob; compressed files use Nintendo LZ11 (magic 0x11 + 24-bit LE size).
 """
 import os
 import struct, os
@@ -89,8 +89,8 @@ def lz11_decompress(data):
 _CRC_TBL = None
 
 def crc32_bzip2(data):
-    """CRC-32/BZIP2: poly 0x04C11DB7, init/xorout 0xFFFFFFFF, non riflesso.
-    E' la funzione hash dei path (path minuscolo, separatore '/') usata nei pack."""
+    """CRC-32/BZIP2: poly 0x04C11DB7, init/xorout 0xFFFFFFFF, non-reflected.
+    This is the path hash (lowercased path, '/' separator) the packs use."""
     global _CRC_TBL
     if _CRC_TBL is None:
         _CRC_TBL = []
@@ -108,9 +108,9 @@ def path_hash(path):
     return crc32_bzip2(path.lower().encode('ascii', 'replace'))
 
 def match_names_to_entries(files, entries):
-    """Mapping deterministico via hash CRC-32/BZIP2 del path minuscolo.
-    Ritorna lista (path, hash, offset, uncSize, compSize) in ordine pfs.
-    Solleva se qualche nome non trova la sua entry."""
+    """Deterministic mapping through the CRC-32/BZIP2 hash of the lowercased path.
+    Returns a list of (path, hash, offset, uncSize, compSize) in .pfs order.
+    Raises if any name fails to find its entry."""
     by_hash = {e[0]: e for e in entries}
     out = []
     missing = []
@@ -122,12 +122,12 @@ def match_names_to_entries(files, entries):
             continue
         out.append((f,) + tuple(e))
     if missing:
-        raise ValueError(f'{len(missing)} nomi senza entry hash, es: {missing[:5]}')
+        raise ValueError(f'{len(missing)} names with no hash entry, e.g.: {missing[:5]}')
     return out
 
 if __name__ == '__main__':
     import sys
-    base = os.path.join(os.environ.get('TLS_ROOT', '.'), r'extract\files\preload')
+    base = os.path.join(os.environ.get('TLS_ROOT', '.'), 'extract', 'files', 'preload')
     stem = sys.argv[1] if len(sys.argv) > 1 else os.path.join(base, 'boot')
     files = parse_pfs(stem + '.pfs')
     entries = parse_pkh(stem + '.pkh')

@@ -743,7 +743,7 @@ def check_tree():
                   else "triangle DISJOINT from cell"] += 1
     for k in sorted(t):
         print(f"  {t[k]:>9}  {k}")
-    print(f"\n  profondita' (lunghezza del nome): {dict(sorted(depth.items()))}")
+    print(f"\n  depth (name length): {dict(sorted(depth.items()))}")
 
 
 def tree_region(d):

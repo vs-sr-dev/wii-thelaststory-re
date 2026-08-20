@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-build_dialogue_browser.py - Genera un browser HTML locale testo+voce.
+build_dialogue_browser.py - Generates a local text+voice HTML browser.
 
-Legge dialogue_db/voiced_lines.tsv e produce dialogue_voice_browser.html nella
-root del progetto (cosi' i path audio 'audio/vo/*.ogg' sono relativi e riproducibili
-direttamente aprendo il file nel browser).
+Reads dialogue_db/voiced_lines.tsv and writes dialogue_voice_browser.html in the
+project root, so the 'audio/vo/*.ogg' paths stay relative and play straight away
+when you open the file in a browser.
 
-Funzioni: filtro testo full-text, selezione scena e personaggio, toggle lingua,
-play inline della clip vocale, durata. Dati embeddati come JSON (nessuna fetch,
-funziona da file://).
+Features: full-text filter, scene and character pickers, per-language toggles,
+inline playback of the voice clip, duration. The data is embedded as JSON (no
+fetch, so it works over file://).
 """
 import os, csv, json, html
 
@@ -27,7 +27,7 @@ def main():
                 's': r['scene'],
                 'c': r['chara'],
                 'v': r['voice'],
-                'o': r['ogg'],          # path OGG relativo (vo/ o se/), '' se assente
+                'o': r['ogg'],          # relative OGG path (vo/ or se/), '' when missing
                 'd': r['seconds'],
                 'sr': r['sample_rate'],
                 'ch': r['channels'],
@@ -44,13 +44,13 @@ def main():
         .replace('/*NROWS*/', str(len(rows)))
     with open(OUT, 'w', encoding='utf-8') as fh:
         fh.write(page)
-    print(f"scritto {OUT}")
-    print(f"  {len(rows)} battute doppiate, {len(scenes)} scene, {len(charas)} personaggi")
-    print(f"  apri il file nel browser (Firefox consigliato per l'audio da file://)")
+    print(f"wrote {OUT}")
+    print(f"  {len(rows)} voiced lines, {len(scenes)} scenes, {len(charas)} characters")
+    print(f"  open the file in a browser (Firefox handles file:// audio best)")
 
 HTML_TEMPLATE = r"""<!doctype html>
-<html lang="it"><head><meta charset="utf-8">
-<title>The Last Story — Dialoghi &amp; Voci</title>
+<html lang="en"><head><meta charset="utf-8">
+<title>The Last Story — Dialogue &amp; Voices</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root{--bg:#12141a;--panel:#1b1e27;--line:#272b38;--fg:#e6e8ee;--mut:#8a90a2;--acc:#c9a24b;--acc2:#5a7fb5}
@@ -91,11 +91,11 @@ HTML_TEMPLATE = r"""<!doctype html>
 </style></head>
 <body>
 <header>
-  <h1>The Last Story — Dialoghi <span>&amp;</span> Voci &nbsp;<span style="color:#8a90a2;font-weight:400;font-size:13px">testo↔voce affiancati · /*NROWS*/ battute doppiate</span></h1>
+  <h1>The Last Story — Dialogue <span>&amp;</span> Voices &nbsp;<span style="color:#8a90a2;font-weight:400;font-size:13px">text↔voice side by side · /*NROWS*/ voiced lines</span></h1>
   <div class="controls">
-    <input id="q" placeholder="cerca nel testo (tutte le lingue) o nel voiceID…" autocomplete="off">
-    <select id="scene"><option value="">— tutte le scene —</option></select>
-    <select id="chara"><option value="">— tutti i personaggi —</option></select>
+    <input id="q" placeholder="search the text (any language) or the voiceID…" autocomplete="off">
+    <select id="scene"><option value="">— all scenes —</option></select>
+    <select id="chara"><option value="">— all characters —</option></select>
     <div class="lang-toggle" id="langs"></div>
     <span class="stat" id="stat"></span>
   </div>
@@ -115,10 +115,10 @@ const $ = s => document.querySelector(s);
 const listEl = $("#list"), player = $("#player");
 let curBtn = null;
 
-// popola select
+// fill the selects
 for(const s of SCENES){const o=document.createElement("option");o.value=s;o.textContent=s;$("#scene").appendChild(o);}
 for(const c of CHARAS){const o=document.createElement("option");o.value=c;o.textContent=c;$("#chara").appendChild(o);}
-// toggle lingue
+// language toggles
 const lt=$("#langs");
 for(const l of LANGS){const b=document.createElement("button");b.textContent=LANGNAME[l];
   if(activeLangs.has(l))b.classList.add("on");
@@ -145,7 +145,7 @@ function play(src,btn){
   if(curBtn)curBtn.classList.remove("playing");
   player.src=src;
   player.play().then(()=>{btn.classList.add("playing");curBtn=btn;})
-    .catch(()=>{btn.classList.remove("playing");btn.title="clip non disponibile";});
+    .catch(()=>{btn.classList.remove("playing");btn.title="clip unavailable";});
 }
 player.onended=()=>{if(curBtn)curBtn.classList.remove("playing");curBtn=null;};
 player.onpause=()=>{if(curBtn)curBtn.classList.remove("playing");};
@@ -153,9 +153,9 @@ player.onpause=()=>{if(curBtn)curBtn.classList.remove("playing");};
 function render(){
   const rows=filtered();
   const q=$("#q").value.trim();
-  $("#stat").textContent=rows.length+" battute";
+  $("#stat").textContent=rows.length+" lines";
   listEl.innerHTML="";
-  if(!rows.length){listEl.innerHTML='<div class="empty">nessun risultato</div>';return;}
+  if(!rows.length){listEl.innerHTML='<div class="empty">no results</div>';return;}
   const frag=document.createDocumentFragment();
   for(const r of rows.slice(0,shown)){
     const row=document.createElement("div");row.className="row";
@@ -166,7 +166,7 @@ function render(){
         '<button class="play" '+(streamBad?'disabled':'')+' title="'+r.v+'">▶</button>'+
         '<span class="chara">'+esc(r.c||"—")+'</span>'+
         '<span class="meta">'+r.s+' · '+r.v+(dur?' · '+dur:'')+(r.sr?' · '+r.sr+'Hz':'')+'</span>'+
-        (streamBad?'<span class="nostream">SFX nel brsar (no stream)</span>':'')+
+        (streamBad?'<span class="nostream">SFX in the brsar (no stream)</span>':'')+
       '</div>'+
       '<div class="rbody">'+
         LANGS.filter(l=>activeLangs.has(l)).map((l,i)=>{
@@ -182,7 +182,7 @@ function render(){
   listEl.appendChild(frag);
   if(rows.length>shown){
     const b=document.createElement("button");b.id="more";
-    b.textContent="mostra altre "+Math.min(PAGE,rows.length-shown)+" (di "+(rows.length-shown)+" rimanenti)";
+    b.textContent="show "+Math.min(PAGE,rows.length-shown)+" more ("+(rows.length-shown)+" remaining)";
     b.onclick=()=>{shown+=PAGE;render();};
     listEl.appendChild(b);
   }

@@ -1,10 +1,10 @@
-"""Costruisce un DB dialoghi consolidato di The Last Story.
+"""Builds a consolidated dialogue DB for The Last Story.
 
-Per ogni scena game_message/dg###_##, allinea le 6 lingue (jp/en/fr/de/es/it)
-per numero-messaggio (M番号) e produce:
-  - dialogue_db/<scene>.tsv  (una riga per battuta, colonne per lingua)
-  - dialogue_db/_index.tsv   (elenco scene + conteggi)
-Usa parsing CSV corretto (le battute possono contenere newline e virgole).
+For every game_message/dg###_## scene it aligns the 6 languages (jp/en/fr/de/es/it)
+by message number (M番号) and writes:
+  - dialogue_db/<scene>.tsv  (one row per line, one column per language)
+  - dialogue_db/_index.tsv   (scene list + counts)
+Uses proper CSV parsing (lines can contain newlines and commas).
 """
 import os
 import sys, os, csv, io, collections
@@ -32,7 +32,7 @@ def get_text(path):
     return d.decode('utf-16-be').lstrip('﻿')
 
 def parse_scene_lang(text):
-    """Ritorna dict {M番号: {'chara':..., 'voice':..., 'text':...}} dal CSV."""
+    """Return dict {M番号: {'chara':..., 'voice':..., 'text':...}} from the CSV."""
     rows = list(csv.reader(io.StringIO(text)))
     out = {}
     for r in rows:
@@ -41,14 +41,14 @@ def parse_scene_lang(text):
         mnum = r[2].strip()
         if not mnum.isdigit():
             continue
-        # col 4 = testo mostrato in-game (localizzato); col 9 = originale JP (ref)
+        # col 4 = the text shown in-game (localised); col 9 = the original JP (reference)
         text = r[4].replace('\n', '\\n').replace('\r', '').strip()
         out[mnum] = {'chara': r[1].strip(), 'voice': r[6].strip(),
                      'text': text,
                      'cond': r[14].strip() if len(r) > 14 else ''}
     return out
 
-# elenca le scene (prefissi dg###_##)
+# list the scenes (dg###_## prefixes)
 scenes = sorted(set(f[len('game_message/'):].rsplit('_', 1)[0]
                     for f in files
                     if f.startswith('game_message/') and f.endswith('.u16')))
@@ -63,7 +63,7 @@ for scene in scenes:
             per_lang[lang] = parse_scene_lang(t)
     if 'jp' not in per_lang and 'en' not in per_lang:
         continue
-    # unione ordinata dei numeri messaggio
+    # sorted union of the message numbers
     mnums = sorted({m for d in per_lang.values() for m in d},
                    key=lambda x: int(x))
     out_path = os.path.join(OUT, scene + '.tsv')
@@ -84,5 +84,5 @@ with io.open(os.path.join(OUT, '_index.tsv'), 'w', encoding='utf-8', newline='')
     for row in index_rows:
         w.writerow(row)
 
-print(f'{len(index_rows)} scene, {total_lines} battute totali -> {OUT}')
-print('esempio scene:', [r[0] for r in index_rows[:8]])
+print(f'{len(index_rows)} scenes, {total_lines} lines total -> {OUT}')
+print('sample scenes:', [r[0] for r in index_rows[:8]])
