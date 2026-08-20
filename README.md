@@ -35,10 +35,13 @@ pipelines are documented with working extractors. Highlights:
 | **Text ↔ Voice** | Dialogue `voiceID` maps 1:1 to stream filename → lines linked to their voice clip (98.7%) |
 | **Models** `wii modl` | NW4R-based container reversed; GX display lists, vertex layout solver, skeleton, UVs, materials |
 | **Skinning** | Matrix palette (1/2/3-bone tables), the hybrid bone-space/model-space convention, per-mesh POS quantisation, node→mesh binding — models assemble with **no dropped triangles** |
+| **Animation** `wii anim` | `.motion` reversed: three track encodings, per-name bone binding, the two loop conventions, 30 fps measured |
+| **Maps & scenes** | `.map` → `.locator` → `.building` → `.model` chain composed; a character **walks on a real map**, validated to ±1.6 cm of the floor |
+| **Gimmicks** `.gmk` | The interaction system as data: `STATE`/`TRIGGER` machine and `MOTCMD` commands anchored to animation frames |
+| **Areas** `.area` | Per-volume environment overrides (AABB proven twice); `SET_AREA` is visibility partitioning, not loading |
+| **Collision** `.hocb`/`.hcb` | Both reversed: self-relative offsets, triangle records (72 B / 68 B), the **octree validated on 253,447 nodes**, and a scene graph in `.hcb` |
 | **`main.dol`** | Loaded in Ghidra via a custom DOL loader; 14,530 functions; boot call-graph reconstructed |
 | **Debug menu** | Present in retail but deliberately unlinked at the linker level (diagnosed) |
-
-Not yet done: `.motion` (`wii anim`) animation data.
 
 Full details are in [`docs/`](docs/).
 
@@ -57,6 +60,10 @@ Full details are in [`docs/`](docs/).
 | [09 — Skinning](docs/09-skinning.md) | Matrix palette, bone-space vs model-space, POS quantisation, node→mesh binding |
 | [10 — Animation](docs/10-animation.md) | `wii anim` curves, Hermite tracks, the two loop conventions, 30 fps, in-place locomotion |
 | [11 — Maps & scenes](docs/11-maps-and-scenes.md) | `.map`/`.locator`/`.building`/`.chr`, f32 map geometry, instancing, walking on a map |
+| [12 — Gimmicks](docs/12-gimmicks.md) | `.gmk` interactive objects, the `STATE`/`TRIGGER` machine, `MOTCMD` animation-timeline scripting |
+| [13 — Areas](docs/13-areas.md) | `.area` per-volume environment overrides, the proven AABB layout, `SET_AREA` visibility partitioning |
+| [14 — Collision](docs/14-collision.md) | `.hocb` binary, self-relative offsets, the 72-byte triangle record, the octree |
+| [15 — Collision (`.hcb`)](docs/15-collision-hcb.md) | Gimmick collision: the 68-byte record, the scene graph, and the relocation table that proves the layout |
 
 ## Tools
 
@@ -93,6 +100,10 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `parse_chr.py` | `.chr`/`.mchr` character definition and animation state machine |
 | `build_scene.py` | Compose a whole map (terrain + instanced props) into one OBJ |
 | `walk_poc.py` | A character walking on a real map: ground raycast + driven root motion |
+| `parse_gmk.py` | `.gmk` gimmicks: state machine, `MOTCMD` timeline, cross-references |
+| `parse_area.py` | `.area` per-volume environment overrides and `SET_AREA` visibility |
+| `parse_hocb.py` | `.hocb` map collision: triangle soup, octree, materials, ground query |
+| `parse_hcb.py` | `.hcb` gimmick collision: 68-byte triangles, scene graph, relocation check |
 | `rso_parse.py`, `rso_reloc.py`, `elfhash_search.py` | RSO/`.sel` module parsing & symbol hashing |
 | `ghidra_scripts/` | Java Ghidra scripts: DOL loader, reports, decompile |
 

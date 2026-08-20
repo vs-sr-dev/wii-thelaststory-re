@@ -25,9 +25,16 @@ The three decisions the PoC has to make, and where each comes from:
    end and one not. Here the period is measured per file rather than assumed,
    otherwise the loop stutters.
 
-The terrain holds the character up via a downward raycast against the mesh,
-which is all "walking on a map" needs: the .hocb collision tree is a separate
-problem and stays out.
+With collision=True the character walks on the real COLLISION (.hocb) instead
+of the visible mesh -- the surface the game actually stands them on. Pass
+filter_slivers=False with it: that filter exists for artefacts of the rendering
+strip decode, and on collision it would throw away the large floors. The path
+finder gains a lot from it: on dg001_01 it finds 200 units of clear run instead
+of 40.
+
+The terrain holds the character up via a downward raycast, with a 2D grid over
+XZ so a query does not sweep the whole map. For a hierarchical query that
+really uses the .hocb octree, the way the game does, see parse_hocb.Collision.
 
 The check that it works is numeric: over a full walk cycle the character's
 lowest vertex stays between 4.839 and 5.051 against a floor at Y = 5.000 --
@@ -41,6 +48,7 @@ Usage:
     python walk_poc.py --props                  # full scene, slower
     python walk_poc.py --plan "idle:20,walk:60,run:40"   # the state machine
     python walk_poc.py --fixed-cam              # fixed camera instead of follow
+    python walk_poc.py --collision              # walk on the .hocb collision
     python walk_poc.py --x -258.5 --z -60 --dir 270   # explicit start
 """
 import math
@@ -232,7 +240,7 @@ def parse_plan(spec):
 def run(map_file="dg001_01.map", chr_file="pc001_bs00_00.chr", state="walk",
         nframes=36, size=520, out=None, props=False, start=None, heading=None,
         step=2, margin=26.0, cam_ax=0.62, plan=None, follow=True,
-        ceiling_cut=True):
+        ceiling_cut=True, collision=False):
     out = out or os.path.join("..", "obj_out",
                               f"poc_{'seq' if plan else state}.gif")
 
@@ -240,7 +248,23 @@ def run(map_file="dg001_01.map", chr_file="pc001_bs00_00.chr", state="walk",
     print(f"[1/5] scene from {map_file}")
     sc = bs.build(map_file, os.path.join("..", "obj_out", "_poc_scene.obj"),
                   terrain_only=not props, gimmick=False)
-    ground = Ground(sc.verts, sc.faces)
+    if collision:
+        # Walk on the real collision (.hocb) rather than the visible mesh.
+        # The rendered scene stays as it is -- it is only there to look at.
+        import parse_hocb
+        cp = parse_hocb.colli_for_map(map_file)
+        if not cp:
+            raise SystemExit(f"no COLLI_TREE for {map_file}")
+        # filter_slivers=False: that filter discards artefacts of the RENDERING
+        # strip decode. Collision is authored geometry with no such artefacts,
+        # and the filter would throw away 635 of 2242 triangles on dg001_01 --
+        # the large floors, which are exactly what you walk on.
+        ground = Ground(*parse_hocb.soup(open(cp, "rb").read()),
+                        filter_slivers=False)
+        print(f"      collision from {os.path.basename(cp)}: "
+              f"{len(ground.tris)} triangles")
+    else:
+        ground = Ground(sc.verts, sc.faces)
     print(f"      terrain: {len(sc.verts)} vertices, {len(sc.faces)} triangles")
 
     # --- character --------------------------------------------------------
@@ -534,6 +558,7 @@ if __name__ == "__main__":
         plan=opt("--plan"),
         follow="--fixed-cam" not in a,
         ceiling_cut="--no-ceiling-cut" not in a,
+        collision="--collision" in a,
         start=((opt("--x", 0.0, float), opt("--z", 0.0, float))
                if "--x" in a else None),
         heading=(math.radians(opt("--dir", 0.0, float))
