@@ -28,9 +28,17 @@ def _matmul(A, B):
 
 def local_matrix(d, node):
     o = node["offset"]
-    sx, sy, sz = (_f(d, o+0x34), _f(d, o+0x38), _f(d, o+0x3c))
-    rx, ry, rz = (_f(d, o+0x40), _f(d, o+0x44), _f(d, o+0x48))
-    tx, ty, tz = (_f(d, o+0x4c), _f(d, o+0x50), _f(d, o+0x54))
+    return compose((_f(d, o+0x34), _f(d, o+0x38), _f(d, o+0x3c)),
+                   (_f(d, o+0x40), _f(d, o+0x44), _f(d, o+0x48)),
+                   (_f(d, o+0x4c), _f(d, o+0x50), _f(d, o+0x54)))
+
+
+def compose(scale, rot, trans):
+    """L = T * Rz*Ry*Rx * S. Split out of local_matrix because `.motion`
+    replaces individual TRS channels before composing (see motion.py)."""
+    sx, sy, sz = scale
+    rx, ry, rz = rot
+    tx, ty, tz = trans
     cx, sxr = math.cos(rx), math.sin(rx)
     cy, syr = math.cos(ry), math.sin(ry)
     cz, szr = math.cos(rz), math.sin(rz)

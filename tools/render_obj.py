@@ -67,7 +67,16 @@ def rot(ax, ay):
     return Ry @ Rx
 
 
-def render_view(V, VT, F, facemat, mtl, size, ay, ax=0.35, cull=0.30):
+def render_view(V, VT, F, facemat, mtl, size, ay, ax=0.35, cull=0.30,
+                bounds=None, twosided=False):
+    """bounds=(centre, span) pins the camera, which animation needs: a per-frame
+    fit would wobble the framing instead of moving the subject.
+
+    twosided=True disables backface culling. MAP geometry needs it: the floors
+    of *_base.model are wound with the normal pointing DOWN (checked by hand on
+    a courtyard quad of dg001_01: e1 x e2 = (0,-459.8,0)), so seen from above
+    they are backfaces and every floor in the level disappears. Character
+    winding is consistent, so the cull can stay on there."""
     P = V @ rot(ax, ay).T
     # ortho fit
     mn, mx = P.min(0), P.max(0)
@@ -101,7 +110,7 @@ def render_view(V, VT, F, facemat, mtl, size, ay, ax=0.35, cull=0.30):
         if nl == 0:
             continue
         n = n / nl
-        if n[2] < 0:            # facing away -> drop
+        if n[2] < 0 and not twosided:    # facing away -> drop
             continue
         shade = 0.35 + 0.75 * max(0.0, abs(n @ light))
         tex = mtl.get(mat)

@@ -55,6 +55,8 @@ Full details are in [`docs/`](docs/).
 | [07 — main.dol in Ghidra](docs/07-main-dol-ghidra.md) | DOL loader, boot call-graph, hash confirmation |
 | [08 — Models & geometry](docs/08-models-geometry.md) | `wii modl` chunks, GX display lists, vertex layout, skeleton, `.material`/`.lip` |
 | [09 — Skinning](docs/09-skinning.md) | Matrix palette, bone-space vs model-space, POS quantisation, node→mesh binding |
+| [10 — Animation](docs/10-animation.md) | `wii anim` curves, Hermite tracks, the two loop conventions, 30 fps, in-place locomotion |
+| [11 — Maps & scenes](docs/11-maps-and-scenes.md) | `.map`/`.locator`/`.building`/`.chr`, f32 map geometry, instancing, walking on a map |
 
 ## Tools
 
@@ -81,6 +83,16 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `render_obj.py` | Tiny software renderer for the exported OBJ (needs `numpy`, `pillow`) |
 | `parse_material.py` | `.material` parser — the mesh ↔ texture bridge |
 | `parse_lip.py` | `.lip` lip-sync parser — the mesh ↔ audio bridge |
+| `motion.py` | `.motion` (`wii anim`) parser, curve evaluation, world & skinning matrices |
+| `loop_closure.py` | Per-file loop convention test (does the last frame repeat the first?) |
+| `gait.py`, `gait_period.py` | Root drift, implied step speed, cycle period — all in world space |
+| `render_anim.py` | Animated skinned render → GIF or frame strip |
+| `parse_map.py` | `.map` scene bill of materials |
+| `parse_locator.py` | `.locator` (`wii loct`) prop instances: name, TRS, lightmap tile |
+| `parse_building.py` | `.building` prop recipe (model + material + LODs) |
+| `parse_chr.py` | `.chr`/`.mchr` character definition and animation state machine |
+| `build_scene.py` | Compose a whole map (terrain + instanced props) into one OBJ |
+| `walk_poc.py` | A character walking on a real map: ground raycast + driven root motion |
 | `rso_parse.py`, `rso_reloc.py`, `elfhash_search.py` | RSO/`.sel` module parsing & symbol hashing |
 | `ghidra_scripts/` | Java Ghidra scripts: DOL loader, reports, decompile |
 

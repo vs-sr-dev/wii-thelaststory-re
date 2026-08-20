@@ -163,7 +163,21 @@ def solve_layout(d, ops, stride, counts):
 
 
 def read_pos(d, strm, i):
+    """One POS from the stream, in either of the two formats the engine uses.
+
+    perElem 6  = quantised s16x3. Characters and props: divide by the per-mesh
+                 K solved in skinning.py to get the real value.
+    perElem 12 = plain f32x3. This is MAP geometry (*_base.model): no K to
+                 solve, no skeleton to apply, the coordinates are already final.
+                 See docs/11-maps-and-scenes.md.
+    """
+    if strm["perElem"] == 12:
+        return struct.unpack_from(">fff", d, strm["dataOff"] + i*12)
     return struct.unpack_from(">hhh", d, strm["dataOff"] + i*6)
+
+
+def pos_is_float(strm):
+    return strm["perElem"] == 12
 
 
 def attr_counts(d, strm, mf):
@@ -191,7 +205,7 @@ def mesh_geometry(d, model, mesh):
     strm = model["chunks"]["strm"]
     mf = mesh_fields(d, mesh)
     psi = mf["posStrm"]
-    if psi < 0 or psi >= len(strm) or strm[psi]["perElem"] != 6:
+    if psi < 0 or psi >= len(strm) or strm[psi]["perElem"] not in (6, 12):
         return [], [], []
     usi = mf["tex0Strm"] if 0 <= mf["tex0Strm"] < len(strm) else None
     counts = attr_counts(d, strm, mf)
@@ -329,6 +343,73 @@ def resolve_mesh_material(strm_name, mat_idx, db, embedded):
     return (f"mat{mat_idx}", None)
 
 
+def model_geometry(path, raw=False):
+    """A .model's geometry assembled in model space, writing nothing.
+
+    Returns (verts, uvs, faces, mat_png, ks, ndrop): verts is a list of
+    (x,y,z), uvs a parallel list of (u,v), faces a list of
+    (i0,i1,i2,materialName) with 0-based indices, mat_png the material -> PNG
+    map. Split out of export() because build_scene.py needs it too -- it has to
+    transform the vertices by the .locator instance matrix before merging.
+    """
+    import skinning as skn
+    d = open(path, "rb").read()
+    model = pm.parse(d)
+    strm = model["chunks"]["strm"]
+    mat_db, embedded = load_material_db(path)
+    pal, rigid = skn.palette(d, model)
+    nodes, world = sk.world_matrices(d, model)
+    nmt = skn.node_mesh_table(d, model)
+
+    verts, uvs, faces, mat_png, ks = [], [], [], {}, []
+    ndrop = 0
+
+    for mno, mesh in enumerate(model["chunks"]["mesh"]):
+        mverts, mtris, muvs = mesh_geometry(d, model, mesh)
+        if not mverts:
+            continue
+        mf = mesh_fields(d, mesh)
+        attach, node_mat = nmt.get(mno, (None, -1))
+        matname, png = resolve_mesh_material(strm[mf["posStrm"]]["name"],
+                                             node_mat, mat_db, embedded)
+        mat_png[matname] = png
+
+        if raw or pos_is_float(strm[mf["posStrm"]]):
+            # Already f32: no quantisation to undo, no skeleton to apply.
+            k, ratio, how = 1.0, float("nan"), "f32"
+            pts = [tuple(map(float, v[0])) for v in mverts]
+        else:
+            k, ratio, how = skn.solve_k(mverts, mtris, pal, rigid, world,
+                                        model["aabb"], attach)
+            if how != "cross-bone" and attach is not None:
+                nab = skn.node_aabb(d, nodes[attach])
+                if nab:
+                    fit = skn.fit_to_node_aabb(mverts, pal, rigid, world, nab)
+                    if fit:
+                        k, attach, err = fit
+                        how = f"node-aabb({err:.3f})"
+            pts = [skn.skin_vertex(rw, mi, pal, rigid, world, k, attach)
+                   for (rw, mi) in mverts]
+        label = nodes[attach]["name"] if attach is not None else mesh["name"]
+        ks.append((label, k, ratio, how))
+
+        base = len(verts)
+        remap = {}
+        for i, p in enumerate(pts):
+            if p is None:
+                continue
+            remap[i] = len(verts)
+            verts.append(p)
+            uvs.append(muvs[i])
+        for (a, b, c) in mtris:
+            if a in remap and b in remap and c in remap:
+                faces.append((remap[a], remap[b], remap[c], matname))
+            else:
+                ndrop += 1
+
+    return verts, uvs, faces, mat_png, ks, ndrop
+
+
 def export(path, out, scale=None, raw=False, verbose=True):
     """Export a .model to OBJ + MTL, assembled in model space.
 
@@ -364,8 +445,10 @@ def export(path, out, scale=None, raw=False, verbose=True):
                                              node_mat, mat_db, embedded)
         mat_png[matname] = png
 
-        if raw:
-            k, ratio, how = 1.0, float("nan"), "raw"
+        if raw or pos_is_float(strm[mf["posStrm"]]):
+            # Already f32: no quantisation to undo and no skeleton to apply,
+            # map geometry is static. See docs/11-maps-and-scenes.md.
+            k, ratio, how = 1.0, float("nan"), "f32"
             pts = [tuple(map(float, v[0])) for v in mverts]
         else:
             k, ratio, how = skn.solve_k(mverts, mtris, pal, rigid, world,
