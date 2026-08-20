@@ -47,10 +47,35 @@ one (gimmick collision). The 1,781 material entries profiled in session 7 are
 the two formats draw the field from the *same* small vocabulary, and neither
 ever uses bit 0.
 
-**Still open: the name of each bit.** The mask arrives as an argument, and the
-query entry points are called through the `atn::ColliTree` vtable, so the
-constant masks live at indirect call sites. Naming the bits means finding those
-callers -- camera, player, projectile, NPC -- not reading more of this function.
+**Still open: the name of each bit** -- and three ways of getting there have
+been tried and ruled out, which is worth writing down so the next attempt does
+not start from the same place:
+
+1. **Direct callers: there are none.** The three query methods
+   (`0x80058120`, `0x8005823c`, `0x80058358`) have exactly one reference each,
+   and it is the vtable slot itself. Every call is indirect.
+2. **Recognising the call sites by signature.** The methods take
+   `(this, hits, maxHits, shape, mask, surfaceFilter)`, so `mask` is r7 and the
+   vptr is `classRecord + 0x08` with the query slots at `+0x0c/+0x10/+0x14`
+   (established from the constructor `FUN_80057f28`, which is the only code
+   reference to `0x807775c0`). Two signatures were tried: `li r8,-1` before a
+   `bctrl` gives 3 sites, all false -- the `-1` belongs to a preceding `bl`; a
+   stack-allocated hit buffer (`addi r4,r1,imm`) gives 115 sites, and **r7 is
+   never written within 20 instructions of any of them**, so none of them is a
+   six-argument call at all.
+3. **Hunting hard-coded masks by their bit vocabulary.** Filtering immediate
+   loads to values whose bits fall only inside the set the materials use
+   returns `0x6`, `0x30`, `0x14`, `0x3e8`... that is 6, 48, 20 and 1000. Small
+   integers pass any bit filter. This is the same trap this project has paid
+   for twice already: exclude the common values *before* counting, or confirm
+   anything.
+
+What that leaves is the real shape of the problem. `ColliTree` objects are
+constructed from dozens of call sites spread across `0x803f…`-`0x8042…`, i.e.
+embedded in entity classes rather than owned by one manager, so the queries are
+scattered through gameplay code too. Naming the bits needs proper indirect-call
+resolution -- recovering which objects hold a `ColliTree` and reading the field
+the mask is loaded from -- not a cleverer grep.
 
 Usage:
     python colli_flags.py --map      # the semantics, with the decompiled test

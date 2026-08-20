@@ -252,10 +252,28 @@ filter** (ask for water specifically, or `< 0` for any), and the same function
 independently re-derives the 68-byte `.hcb` stride, the material pointer at
 `+0x40` and the surface id at `+0x00` — details it was never fitted to.
 
-Still open: **what each bit is called.** The mask is an argument, and the query
-entry points are reached through the `atn::ColliTree` vtable, so the constant
-masks sit at indirect call sites. That is a caller hunt, not more of this
-function.
+Still open: **what each bit is called** — and three routes to it have been tried
+and closed, recorded here so the next attempt starts further along:
+
+1. **There are no direct callers.** Each of the three query methods has exactly
+   one reference: its own vtable slot.
+2. **Signature matching does not find the call sites.** The vptr is
+   `classRecord + 0x08` (from the constructor `FUN_80057f28`, the only code
+   reference to `0x807775c0`), so the query slots are at `+0x0c/+0x10/+0x14`
+   and the mask is r7. Matching on `li r8,-1` yields 3 sites, all false — the
+   `-1` belongs to a preceding `bl`. Matching on a stack hit-buffer yields 115,
+   and **r7 is never written within 20 instructions of any of them**, so none is
+   a six-argument call.
+3. **Hunting hard-coded masks by bit vocabulary fails on small integers.**
+   Immediates whose bits fall only inside the used set come back as `0x6`,
+   `0x30`, `0x14`, `0x3e8` — 6, 48, 20, 1000. The same trap as
+   [17](17-eff-binary.md): exclude the common values before counting.
+
+The reason all three miss is structural: `ColliTree` objects are constructed
+from dozens of sites across `0x803f…`–`0x8042…`, embedded in entity classes
+rather than owned by a single manager. The queries are therefore scattered
+through gameplay code. Naming the bits needs indirect-call resolution — which
+objects hold a `ColliTree`, and what writes the field the mask comes from.
 
 The three readings that were ruled out, kept so nobody repeats them
 (`parse_hocb.py --materials`):
