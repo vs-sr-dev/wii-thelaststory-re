@@ -4,10 +4,15 @@ Binary assets (textures, models, animations, lip-sync) use a common container
 called **`chnkdata`**:
 
 - magic `"chnkdata"`
-- a generic tag `"wii text"` — the **same for every asset type**, so it does
-  *not* discriminate the content type
+- a subtag at `0x0c`, here `"wii text"`
 - a header with format/dimensions
 - payload starting at offset `0x40`
+
+> **Correction.** An earlier revision of this document claimed the subtag was
+> generic and identical across asset types. It is not: the subtag **does**
+> discriminate the content. Textures are `wii text`, models `wii modl`
+> ([08](08-models-geometry.md)), animations `wii anim`. The mistake came from
+> only ever having looked at textures.
 
 ## Texture header fields
 
@@ -48,5 +53,6 @@ python tools/batch_tex.py all
 ```
 
 produces PNGs. The same `chnkdata` container wraps `.model` / `.motion` / `.lip`
-assets, whose formats are the subject of future work; the textures decoded here
-are applied to those meshes through the `.material` files.
+assets under their own subtags. The textures decoded here are applied to meshes
+through the `.material` files — see [08](08-models-geometry.md) and
+[09](09-skinning.md).

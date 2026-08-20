@@ -23,8 +23,8 @@ extraction tools, no dialogue database. This repository aims to fill that gap.
 ## Status
 
 The asset container is fully reversed, the path-hash function was cracked and
-confirmed against the disassembly, and the text / texture / audio pipelines are
-documented with working extractors. Highlights:
+confirmed against the disassembly, and the text / texture / audio / geometry
+pipelines are documented with working extractors. Highlights:
 
 | Area | Result |
 |---|---|
@@ -33,8 +33,12 @@ documented with working extractors. Highlights:
 | **Textures** | GX container `chnkdata`; all formats (CMPR, IA4/8, RGB5A3, RGB565, I4/8, RGBA8) decoded |
 | **Audio** | Standard Nintendo **BRSTM** (DSP-ADPCM); RSTM header decoded; engine sound registry (`rsid`) parsed |
 | **Text ↔ Voice** | Dialogue `voiceID` maps 1:1 to stream filename → lines linked to their voice clip (98.7%) |
+| **Models** `wii modl` | NW4R-based container reversed; GX display lists, vertex layout solver, skeleton, UVs, materials |
+| **Skinning** | Matrix palette (1/2/3-bone tables), the hybrid bone-space/model-space convention, per-mesh POS quantisation, node→mesh binding — models assemble with **no dropped triangles** |
 | **`main.dol`** | Loaded in Ghidra via a custom DOL loader; 14,530 functions; boot call-graph reconstructed |
 | **Debug menu** | Present in retail but deliberately unlinked at the linker level (diagnosed) |
+
+Not yet done: `.motion` (`wii anim`) animation data.
 
 Full details are in [`docs/`](docs/).
 
@@ -49,6 +53,8 @@ Full details are in [`docs/`](docs/).
 | [05 — Audio (BRSTM)](docs/05-audio-brstm.md) | RSTM header, `rsid` registry, text↔voice linkage |
 | [06 — Debug menu](docs/06-debug-menu.md) | The retail debug menu and why it can't boot |
 | [07 — main.dol in Ghidra](docs/07-main-dol-ghidra.md) | DOL loader, boot call-graph, hash confirmation |
+| [08 — Models & geometry](docs/08-models-geometry.md) | `wii modl` chunks, GX display lists, vertex layout, skeleton, `.material`/`.lip` |
+| [09 — Skinning](docs/09-skinning.md) | Matrix palette, bone-space vs model-space, POS quantisation, node→mesh binding |
 
 ## Tools
 
@@ -68,6 +74,13 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `build_dialogue_db.py` | Build the consolidated 6-language dialogue database |
 | `link_voices.py` | Link each dialogue line to its voice clip |
 | `build_dialogue_browser.py` | Generate a local text+voice HTML browser |
+| `parse_model.py` | `.model` (`wii modl`) structural parser; `--skeleton` for the bone tree |
+| `skeleton.py` | Rebuilds world bind matrices from the node TRS; can dump the skeleton as OBJ |
+| `skinning.py` | Matrix palette, node→mesh table, per-part AABB, POS quantisation solver |
+| `export_obj.py` | `.model` → OBJ + MTL, assembled in model space and textured |
+| `render_obj.py` | Tiny software renderer for the exported OBJ (needs `numpy`, `pillow`) |
+| `parse_material.py` | `.material` parser — the mesh ↔ texture bridge |
+| `parse_lip.py` | `.lip` lip-sync parser — the mesh ↔ audio bridge |
 | `rso_parse.py`, `rso_reloc.py`, `elfhash_search.py` | RSO/`.sel` module parsing & symbol hashing |
 | `ghidra_scripts/` | Java Ghidra scripts: DOL loader, reports, decompile |
 

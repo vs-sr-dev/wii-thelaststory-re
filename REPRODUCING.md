@@ -10,6 +10,7 @@ the game**. No game data is distributed here; you supply the disc.
 - **[vgmstream-cli](https://vgmstream.org/)** — only for audio decoding
 - **ffmpeg** — only for OGG output in `audio_decode.py`
 - **[Ghidra](https://ghidra-sre.org/) 12.x** — only for the `main.dol` analysis
+- **numpy** and **pillow** — only for `render_obj.py` (the model preview)
 - A C compiler (e.g. gcc/mingw) — only if you want the faster `lwextract.c`
 
 Assumed layout (paths in the tools are relative to a project root that contains
@@ -79,7 +80,36 @@ python tools/build_dialogue_browser.py
 `audio_decode.py` finds vgmstream via the `VGMSTREAM_CLI` environment variable,
 falling back to `vgmstream-cli` on `PATH`. See [docs/05](docs/05-audio-brstm.md).
 
-## 6. Analyse `main.dol` in Ghidra
+## 6. Models and geometry
+
+```
+# structure of a model, and its bone tree
+python tools/parse_model.py assets/.../model/an008_00.model
+python tools/parse_model.py assets/.../model/an008_00.model --skeleton
+
+# skinning palette + the POS quantisation resolved for each mesh
+python tools/skinning.py assets/.../model/an008_00.model
+
+# export to OBJ + MTL, assembled in model space and textured
+python tools/export_obj.py assets/.../model/an008_00.model an008.obj
+
+# optional visual check (needs numpy + pillow)
+python tools/render_obj.py an008.obj an008.png --no-cull
+```
+
+`export_obj.py` resolves textures against `textures_png/`, so run step 4 first
+if you want a textured result. Add `--raw` to skip the assembly step and see
+the quantised positions untouched. See [docs/08](docs/08-models-geometry.md) and
+[docs/09](docs/09-skinning.md).
+
+The plaintext bridges can be read on their own:
+
+```
+python tools/parse_material.py assets/.../material/an008_00.material --textures
+python tools/parse_lip.py      assets/.../lip/VO_EV0101_010.lip --csv
+```
+
+## 7. Analyse `main.dol` in Ghidra
 
 Load `main.dol` with the Java loader script, then run the reports:
 
