@@ -178,16 +178,57 @@ Depths run from 1 to 12, peaking at 7.
 words carry anything — `+0x0c` through `+0x1c` are zero in **every** entry:
 
 ```
-+0x00  u32   bitfield A   (0, 0x10, 0x08, 0x01, 0x02, …)
-+0x04  u32   bitfield B   (0, 0x200, 0x11e, 0x21e, 0x1e, 0x16, …)
++0x00  u32   SURFACE TYPE — an id into boot/colli_attr_table.csv
++0x04  u32   bitfield      (0, 0x200, 0x11e, 0x21e, 0x1e, 0x16, …)
 +0x08  u32   ARGB colour
 ```
 
-**Entry #0 of every file is the default** — flags `0/0`, colour `0xff000000` —
-in 351 of 351 files.
+**Entry #0 of every file is the default** — surface 0, flags `0`, colour
+`0xff000000` — in 351 of 351 files.
 
-The flags are **not decoded**, but this round ruled out three readings, which is
-worth recording so nobody repeats them (`parse_hocb.py --materials`):
+### `+0x00` is the surface type, not a bitfield
+
+It was read as a bitfield for one simple reason: its commonest values are `0x01`,
+`0x02`, `0x08`, `0x10`. Those look like single bits. They are not — they are the
+ordinals of the four commonest surfaces in the game, *brown earth*, *black soil*,
+*grass* and *stone paving*, in a 33-row table the game ships in plain sight:
+
+```
+boot/colli_attr_table.csv      (Shift-JIS, 33 rows, ids 0..32)
+  id, name,        ATR_EFF,       ATR_HUMAN_SE, ATR_CREATURE_SE, ATR_MACHINE_SE
+  8,  grass,       ,              SE_ATTR008,   SE_ATTR021,      SE_ATTR008
+  20, water,       ef_ca020.eff,  SE_ATTR020,   SE_ATTR020,      SE_ATTR020
+```
+
+Each row says what to spawn and what to play when something touches that
+surface: one effect and three footstep sounds, split by who is walking —
+human, creature, machine.
+
+Small ordinals and bit masks are indistinguishable until you find the table they
+index. What found it here was a **class name**: `ColliAttrManager`, recovered
+from the DOL's surviving RTTI strings — see
+[18 — DOL class names](18-dol-classes.md).
+
+Four checks, all from `parse_colli_attr.py --check`:
+
+| Check | Result |
+|---|---|
+| **Range** — ids outside 0..32 | **none**, over 413,390 triangles in 351 files; the maximum is *exactly* 32, the table's last row |
+| **Shape** — is the distribution sensible? | 80.8 % id 0 "nothing" (the default), then 8.2 % stone paving across 177 files, then grass, earth, rock. "On leaves" appears in exactly one file |
+| **Effects** — do the four `.eff` the table names exist? | all four, under `data/eff/`. Their names carry the id: `ef_ca020.eff` ↔ id 20 (water), `ef_ca032.eff` ↔ id 32. `ca` = collision attribute |
+| **Localisation** — is water where water should be? | ids 20/21/28/29/32 appear in 1–23 files out of 351, not scattered. Muddy water is used in exactly one map |
+
+The range check alone would prove little: `0` and `1` dominate almost every
+field in every format, so "small values, in range" confirms nearly any guess.
+What carries the argument is the maximum landing *exactly* on the table's last
+id, together with the other three.
+
+### `+0x04` is still open
+
+The second word is a genuine bitfield and remains undecoded (max `0x40014`).
+It is no longer a candidate for the surface type, so it most likely carries
+per-volume behaviour. Three readings were ruled out for the material record and
+are worth recording so nobody repeats them (`parse_hocb.py --materials`):
 
 - **They are not a floor/wall classification.** That would be redundant: the
   normal is already in the triangle record. Correlating each bit with face
@@ -204,10 +245,12 @@ worth recording so nobody repeats them (`parse_hocb.py --materials`):
   neither sits on any of the map's 18 `GIMMICK_LOC` positions. They are
   hand-authored volumes — the 12-triangle one is exactly a box (6 faces × 2).
 
-So the flags most likely carry surface *semantics* the geometry cannot express —
-footstep sound, damage, camera behaviour, climbability — and pinning them down
-needs either the DOL or a ground-truth comparison against a known in-game
-surface.
+The guess recorded here in the previous round — that these fields carry surface
+semantics the geometry cannot express, "footstep sound, damage, camera
+behaviour, climbability", and that pinning them down "needs either the DOL or a
+ground-truth comparison" — turned out to be right on both counts, and it was the
+DOL that delivered. It is `+0x00` that holds the semantics, though, not the
+bitfield the sentence was written about.
 
 ## `.hcb` — same header, different body
 
