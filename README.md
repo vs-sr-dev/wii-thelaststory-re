@@ -39,7 +39,7 @@ pipelines are documented with working extractors. Highlights:
 | **Maps & scenes** | `.map` → `.locator` → `.building` → `.model` chain composed; a character **walks on a real map**, validated to ±1.6 cm of the floor |
 | **Gimmicks** `.gmk` | The interaction system as data: `STATE`/`TRIGGER` machine and `MOTCMD` commands anchored to animation frames |
 | **Areas** `.area` | Per-volume environment overrides (AABB proven twice); `SET_AREA` is visibility partitioning, not loading |
-| **Collision** `.hocb`/`.hcb` | Both reversed: self-relative offsets, triangle records (72 B / 68 B), the **octree validated on 253,447 nodes**, a scene graph in `.hcb`, and the **surface type** joined to the game's 33-row material table |
+| **Collision** `.hocb`/`.hcb` | Both reversed: self-relative offsets, triangle records (72 B / 68 B), the **octree validated on 253,447 nodes**, a scene graph in `.hcb`, the **surface type** joined to the game's 33-row material table, and the `+0x04` word decoded as a **query exclusion mask** (collision layers) |
 | **`main.dol` class names** | RTTI survived the symbol strip: **704 C++ class names with their vtables**, incl. 60+ named `AI::Script::*` behaviours |
 | **Effects** `.efp`/`.effconfig`/`.eff` | Whole group decoded: XML sequencer (effects attach to the skeleton **by bone name**, verified against 4,691 models), area presets, and the particle binary — **little-endian**, with curves keyed over normalised lifetime (100 % on 36,705 curves). The engine's own **loader and its layout schemas** have since been located in `main.dol`, confirming the record sizes from code |
 | **`main.dol`** | Loaded in Ghidra via a custom DOL loader; boot call-graph reconstructed. Ghidra's stock PowerPC has no Gekko paired-singles and saw only **44 %** of the text — installing a **Gekko SLEIGH** language took that to **97.6 %** and 15,955 functions, which is what unblocked the effect channels |
@@ -53,10 +53,15 @@ Full details are in [`docs/`](docs/).
 Kept here deliberately, because a format note is only useful if it says where it
 stops:
 
-- **The `.hocb` material bitfield at `+0x04`.** Undecoded (max `0x40014`). Its
-  neighbour at `+0x00` *is* solved — it is the surface type — so this one most
-  likely carries per-volume behaviour instead. The `.hcb` "type" field remains
-  demonstrably *not* a surface type.
+- ~~**The `.hocb` material bitfield at `+0x04`.**~~ — **answered.** It is a
+  **query exclusion mask** (collision layers): a query passes a mask of
+  categories to ignore and any triangle whose word intersects it is skipped. It
+  never described the surface, which is why three data-side readings of it came
+  back empty. `+0x00` also turns out to double as a query filter. See
+  [14](docs/14-collision.md). **Still open: what each bit is called** — the
+  masks are constants at indirect (vtable) call sites.
+- **The `.hcb` "type" field** remains demonstrably *not* a surface type, and
+  still unexplained.
 - ~~**The 22 `.eff` curve channels.**~~ — **answered.** A Gekko SLEIGH language
   ([19](docs/19-gekko-sleigh.md)) made the particle simulation readable, and the
   channels resolve into 8 groups selected by a 9-bit mask — colour RGBA, scale,
@@ -149,6 +154,7 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `parse_hocb.py` | `.hocb` map collision: triangle soup, octree, materials, ground query |
 | `parse_hcb.py` | `.hcb` gimmick collision: 68-byte triangles, scene graph, relocation check |
 | `parse_colli_attr.py` | Surface types: joins the `.hocb` material id to the game's own `colli_attr_table.csv` |
+| `colli_flags.py` | The material word at `+0x04` as a query exclusion mask, read from the DOL; `--vocab` cross-checks `.hocb` against `.hcb` |
 | `dol_classes.py` | Recovers C++ class names and vtables from `main.dol`'s surviving RTTI |
 | `dol_swap_schema.py` | Decodes the endian-fixup schemas the `.eff` loader uses — the format's layout, declared by the binary |
 | `dol_disasm.py` | Gekko-tolerant partial disassembler, plus `--coverage`: measures how much of the DOL Ghidra silently misses |

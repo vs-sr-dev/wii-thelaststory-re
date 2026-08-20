@@ -223,19 +223,51 @@ field in every format, so "small values, in range" confirms nearly any guess.
 What carries the argument is the maximum landing *exactly* on the table's last
 id, together with the other three.
 
-### `+0x04` is still open
+### `+0x04` is a query exclusion mask
 
-The second word is a genuine bitfield and remains undecoded (max `0x40014`).
-It is no longer a candidate for the surface type, so it most likely carries
-per-volume behaviour. Three readings were ruled out for the material record and
-are worth recording so nobody repeats them (`parse_hocb.py --materials`):
+**Answered in session 11, and it was not the kind of thing everyone assumed.**
+The word does not describe the surface. It describes **who is allowed to see
+it**: a collision query supplies a mask of categories to ignore, and a triangle
+whose word intersects that mask is skipped. From `FUN_80059660`, the triangle
+test inside the query:
+
+```c
+mat = *(Material **)(tri + 0x40);
+if ((queryMask & mat->word04) == 0 &&                  // <-- +0x04
+    (surfFilter < 0 || surfFilter == mat->word00) &&   // +0x00, <0 = any
+    intersects(query, tri)) { ...record the hit... }
+```
+
+Collision layers, in other words. Full write-up and the cross-format check in
+`colli_flags.py` (`--map`, `--vocab`); the reason this became readable at all is
+[19 — A Gekko SLEIGH for Ghidra](19-gekko-sleigh.md).
+
+That also explains why the three readings below all came back empty: they each
+looked for a *property of the geometry*, and there is none to find. Nothing
+about a triangle's orientation, colour or position can predict which categories
+its author chose to hide it from.
+
+Two by-products: `+0x00` is not only the surface type but doubles as a **query
+filter** (ask for water specifically, or `< 0` for any), and the same function
+independently re-derives the 68-byte `.hcb` stride, the material pointer at
+`+0x40` and the surface id at `+0x00` — details it was never fitted to.
+
+Still open: **what each bit is called.** The mask is an argument, and the query
+entry points are reached through the `atn::ColliTree` vtable, so the constant
+masks sit at indirect call sites. That is a caller hunt, not more of this
+function.
+
+The three readings that were ruled out, kept so nobody repeats them
+(`parse_hocb.py --materials`):
 
 - **They are not a floor/wall classification.** That would be redundant: the
   normal is already in the triangle record. Correlating each bit with face
   orientation separates nothing — except two bits that never appear on an
   up-facing face: `+0x04` bit 8 (0.5 % up, over 99 files) and bit 18 (0.0 %,
   58 files). Those two are plausible "not walkable" markers, and they are the
-  only orientation signal in the whole bitfield.
+  only orientation signal in the whole bitfield. *(In hindsight that signal is
+  real but inverted: those are categories that only ever hide vertical
+  surfaces — a mask, not a property.)*
 - **The colour is not derived from the flags.** The commonest combination
   (`0/0`) appears with 65 different colours. It is a hand-picked per-material
   tint, and the alpha byte genuinely varies (`0x82`, `0x9d`) — a translucent
@@ -250,7 +282,30 @@ semantics the geometry cannot express, "footstep sound, damage, camera
 behaviour, climbability", and that pinning them down "needs either the DOL or a
 ground-truth comparison" — turned out to be right on both counts, and it was the
 DOL that delivered. It is `+0x00` that holds the semantics, though, not the
-bitfield the sentence was written about.
+bitfield the sentence was written about. And the bitfield turned out not to hold
+surface semantics at all: it holds the *audience*.
+
+### One field or two? The `.hocb` / `.hcb` cross-check
+
+The decompiled path is the `.hcb` one. The materials profiled above are `.hocb`.
+Before carrying the reading across, `colli_flags.py --vocab` asks whether the
+two formats are even speaking the same language:
+
+```
+.hocb   351 files,  1781 entries,  43 distinct values at +0x04
+.hcb    388 files,   757 entries,  14 distinct values at +0x04
+
+values used by both formats: 8
+  they account for 84.7% of .hocb entries and 98.8% of .hcb entries
+  shared: 0x0 0x10 0x12 0x16 0x11e 0x200 0x31e 0x20000
+bit 0 is never set, in either format, across all 2,538 entries
+```
+
+Eight values, most of them multi-bit and arbitrary-looking (`0x11e`, `0x31e`),
+covering the overwhelming majority of both populations. Two unrelated fields do
+not agree like that. And bit 0 going unused in 2,538 independent entries says
+the categories are numbered from 1 — a small fact, but one a wrong reading of
+the field would have no reason to produce.
 
 ## `.hcb` — same header, different body
 
