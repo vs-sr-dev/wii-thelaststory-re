@@ -23,14 +23,22 @@ whose output was shipped as-is.
 ## Header and sections — 72 bytes
 
 ```
-+0x00  char[8]  '@EFF$\0\0\0'
++0x00  char[4]  '@EFF'
++0x04  u32      VERSION — 0x24 on every file   3158/3158
 +0x08  u32      file size                      2210/2210
 +0x0c  u32      A = number of EMITTERS
 +0x10  u32      B = number of MATERIALS
 +0x14  u32      72, always (start of data)     2210/2210
 +0x18 … +0x44   section offsets, monotonic     2210/2210
-                (+0x1c and +0x24 are zero in every file)
+                (+0x24 is zero in every file)
++0x1c  u32      C = count of a third record type — 0 in every file
 ```
+
+> **Correction.** This was previously read as an 8-byte magic `'@EFF$\0\0\0'`.
+> It is a **4-byte** magic and a **u32 version**: the `'$'` is `0x24`, the low
+> byte of version 36 stored little-endian. The DOL's loader is what settles it —
+> see [The loader in `main.dol`](#the-loader-in-maindol) below — and the reading
+> holds on all 3158 `.eff` files on the disc.
 
 Sections carry no size field — a section's length is the distance to the next
 offset. The record sizes fall out of that, and they are exact on **every file**:
@@ -39,7 +47,7 @@ offset. The record sizes fall out of that, and they are exact on **every file**:
 |---|---|---|
 | `[+0x14, +0x18)` | **B × 312** | materials |
 | `[+0x18, +0x20)` | **A × 620** | emitters |
-| `[+0x20, +0x28)` | 0 | empty in every file |
+| `[+0x20, +0x28)` | 0 | a **third record type**, 272 bytes — count `C` is 0 in every file, but the loader supports it |
 | `[+0x28, +0x2c)` | A × 4 | one u32 per emitter |
 | `[+0x2c, +0x30)` | **A × 176** | curve tables, one per emitter |
 | `[+0x30, +0x34)` | A × 4 | one u32 per emitter (always 1) |
@@ -212,14 +220,98 @@ python parse_eff.py --names         # emitter names
 python parse_eff.py --channels      # channel stats + the ruled-out pairing
 ```
 
+## The loader in `main.dol`
+
+Everything above was derived from the files. The engine's own loader has since
+been located, and it agrees — which is worth having, because until now the
+record sizes rested on file-size arithmetic alone.
+
+### Finding it
+
+`.eff` is little-endian on a big-endian console, so *something* must byte-swap
+it. PowerPC has byte-reversing loads, so `lwbrx` was the obvious net: there are
+exactly **32 in the whole DOL, and all 32 sit in one routine** — which turns out
+to be **MD5** (the F function, the sine table, the 7/12/17/22 rotations; MD5 is
+defined little-endian). A dead end, but a quick and decisive one.
+
+That leaves the software idiom, `rlwimi rT,rS,24,0,7` paired with
+`rlwimi rT,rS,24,16,23`. 191 of those in 41 clusters — and two clusters sit in
+the same address region as the `atn::EffectManager` and `atn::LoadEffect`
+vtables recovered in [18 — DOL class names](18-dol-classes.md), which is what
+made them worth reading first.
+
+### It is schema-driven
+
+`FUN_802371bc(void *data, const Entry *schema)` knows nothing about `.eff`. It
+walks a descriptor of 8-byte entries:
+
+```
+s16 op ; s16 count ; u32 nested
+
+op -1  end            op  2  swap `count` u32 (and f32)
+op  0  skip `count` BYTES, untouched      op  3  swap `count` u64
+op  1  swap `count` u16                   op  4  recurse into `nested`, `count` times
+```
+
+Because `op 0` means "leave alone", **the schema states which byte ranges are
+text and which are numbers** — the format declaring its own layout, in the same
+spirit as the `.hcb` relocation table in [15](15-collision-hcb.md).
+`dol_swap_schema.py` decodes them:
+
+| Schema | Describes |
+|---|---|
+| `0x80783a18` header | 64 B: 4 skipped (the magic), then u32s |
+| `0x80783a80` emitter | **620 B**: 64 skipped (the name), then all u32 |
+| `0x80783b18` material | **312 B**: 256 skipped (two 128-byte names), then 14 u32 |
+| `0x80783b60` third type | 268 B in a 272 B stride |
+| `0x80783ba0` curve key | **8 B**: 2 u32 |
+
+The emitter's 64-byte skip and the material's 256 are the two name fields this
+project had already inferred; the material's remaining 14 u32 are exactly the
+56 bytes of parameters recorded above. The sizes 620, 312 and 8 now rest on the
+code as well as on the arithmetic.
+
+### The driver: `FUN_80239030`
+
+The sole caller, and the `.eff` load path end to end:
+
+1. swap the 64-byte header;
+2. read the **version** at `+0x04` — below `0x22` it refuses and returns 0;
+   below `0x24` it loads but logs `"old eff version!"`; at `0x24` or above two
+   further header words at `+0x40`/`+0x44` exist and the curve tables are used
+   in place rather than copied;
+3. relocate the section offsets at `+0x28`…`+0x3c` by adding the load address;
+4. walk `A` emitters, stride `0x26c` = **620**;
+5. walk `B` materials, stride `0x138` = **312**;
+6. walk `C` records of stride `0x110` = **272** — the type nothing ships;
+7. per emitter, loop **22 times** (`iVar7 < 0x16`) over 8-byte `(count, offset)`
+   pairs in a `0xb0` = **176**-byte block, relocating each offset and swapping
+   `count` keys of 8 bytes;
+8. per 272-byte record, the same with **13** channels in a `0x68` = 104-byte
+   block.
+
+Step 7 is the confirmation that matters most here: **22 channels of 8-byte keys
+is what the engine does**, not an inference from `22 × 8 = 176`.
+
+### What it did not give
+
+The schema declares *widths*, not *meanings*. Every emitter field past the name
+is `u32`, so the swapper cannot distinguish a float from a count, and it says
+nothing about which channel is size or colour. Naming the 22 still needs either
+the code that consumes them during simulation, or an on-screen comparison.
+
 ## What is still open
 
 - The meaning of the individual floats in the emitter's 620 bytes and the
-  material's 56. They are readable; they are not named.
-- Which of the 22 channels is position, size, colour, rotation — with the
-  static-parameter pairing already ruled out (see above), this needs the DOL.
+  material's 56. They are readable and their **widths are now confirmed**; they
+  are not named.
+- Which of the 22 channels is position, size, colour, rotation. The
+  static-parameter pairing is ruled out (above) and the loader does not say —
+  the next target is the simulation code that reads the curve block.
 - The three `A × 4` tables. The one at `+0x30` is **1 in all 8,637 records**;
   the others carry 68 and 76 distinct values.
+- The 272-byte third record type and its 13 channels: supported by the loader,
+  used by nothing on this disc.
 
 With this the effects group is complete: `.efp` and `.effconfig` in
 [16](16-effects.md), `.eff` here.

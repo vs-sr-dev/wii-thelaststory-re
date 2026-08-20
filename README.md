@@ -41,7 +41,7 @@ pipelines are documented with working extractors. Highlights:
 | **Areas** `.area` | Per-volume environment overrides (AABB proven twice); `SET_AREA` is visibility partitioning, not loading |
 | **Collision** `.hocb`/`.hcb` | Both reversed: self-relative offsets, triangle records (72 B / 68 B), the **octree validated on 253,447 nodes**, a scene graph in `.hcb`, and the **surface type** joined to the game's 33-row material table |
 | **`main.dol` class names** | RTTI survived the symbol strip: **704 C++ class names with their vtables**, incl. 60+ named `AI::Script::*` behaviours |
-| **Effects** `.efp`/`.effconfig`/`.eff` | Whole group decoded: XML sequencer (effects attach to the skeleton **by bone name**, verified against 4,691 models), area presets, and the particle binary — **little-endian**, with curves keyed over normalised lifetime (100 % on 36,705 curves) |
+| **Effects** `.efp`/`.effconfig`/`.eff` | Whole group decoded: XML sequencer (effects attach to the skeleton **by bone name**, verified against 4,691 models), area presets, and the particle binary — **little-endian**, with curves keyed over normalised lifetime (100 % on 36,705 curves). The engine's own **loader and its layout schemas** have since been located in `main.dol`, confirming the record sizes from code |
 | **`main.dol`** | Loaded in Ghidra via a custom DOL loader; 14,530 functions; boot call-graph reconstructed |
 | **Debug menu** | Present in retail but deliberately unlinked at the linker level (diagnosed) |
 
@@ -56,9 +56,11 @@ stops:
   neighbour at `+0x00` *is* solved — it is the surface type — so this one most
   likely carries per-volume behaviour instead. The `.hcb` "type" field remains
   demonstrably *not* a surface type.
-- **The 22 `.eff` curve channels.** Curves are decoded and their keying is proven,
-  but which channel drives which visual parameter is unknown. An attempted
-  pairing with static emitter parameters was tested and **ruled out**.
+- **The 22 `.eff` curve channels.** Curves are decoded, their keying is proven,
+  and the engine's loader confirms there are exactly 22 — but which channel
+  drives which visual parameter is still unknown. Pairing them with static
+  emitter parameters was tested and **ruled out**; the loader declares field
+  *widths*, not meanings. Next target is the simulation code that reads them.
 - **`.gmk` `TRIGGER` types 2–6** and the `PATH_POINT` opcode: seen, counted, not
   interpreted.
 - **The `.hocb` `0x003` tail.** Present in every file, parsed as bytes, unread.
@@ -135,6 +137,7 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `parse_hcb.py` | `.hcb` gimmick collision: 68-byte triangles, scene graph, relocation check |
 | `parse_colli_attr.py` | Surface types: joins the `.hocb` material id to the game's own `colli_attr_table.csv` |
 | `dol_classes.py` | Recovers C++ class names and vtables from `main.dol`'s surviving RTTI |
+| `dol_swap_schema.py` | Decodes the endian-fixup schemas the `.eff` loader uses — the format's layout, declared by the binary |
 | `parse_efp.py` | `.efp` effect sequencer + `.effconfig` presets; bone-attachment cross-check |
 | `parse_eff.py` | `.eff` particle binary: emitters, materials, lifetime-keyed curves |
 | `rso_parse.py`, `rso_reloc.py`, `elfhash_search.py` | RSO/`.sel` module parsing & symbol hashing |
