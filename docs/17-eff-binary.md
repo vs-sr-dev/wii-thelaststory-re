@@ -141,8 +141,47 @@ move is to read each group as one XYZ curve — but **the key counts within a
 group do not always agree**: 79 % for the first group, ~99 % for the others. So
 each component is keyed independently and a group is not one vector curve.
 
-Which channel drives what would need the DOL or an on-screen comparison. It is
-not a data-analysis problem, and it is not guessed here.
+#### An idea that looked right and was not
+
+There was a data-driven route worth trying before falling back on the DOL. If a
+channel animates a parameter, the curve's value at `t = 0` ought to equal the
+corresponding **static** parameter inside the emitter's 620 bytes — pairing
+channel to offset through a recomputable invariant, which is how most of this
+project's results were reached.
+
+The first count looked like a hit: some channels matched a static offset in over
+90 % of cases. It was **entirely an artefact**. Those matches were on the values
+`0.0` and `1.0`, which sit in dozens of static slots and therefore match by
+chance; several unrelated offsets tied with identical counts, which is the tell.
+
+Repeating the count **on distinctive values only** — excluding `0`, `±1`, `0.5`,
+`255`, `360` — the signal vanishes:
+
+| Channel | Distinctive cases | No match at all | Best offset |
+|---|---|---|---|
+| 0 | 3236 | **94.4 %** | +0x11c, 1.9 % |
+| 1 | 1816 | 90.5 % | +0x24c, 4.1 % |
+| 6 | 4844 | **99.9 %** | +0x1a0, 0.1 % |
+
+So the hypothesis is falsified: the curve's initial value is **not** duplicated
+in the static block. The curve *replaces* the parameter rather than shadowing
+it. Which means this really is out of reach of data analysis and needs the DOL
+or an on-screen comparison. Run `parse_eff.py --channels` to reproduce both the
+artefact and its refutation.
+
+#### What can be stated as fact
+
+- **Channel 6 is the universal one.** Animated on 7,992 of 8,637 emitters
+  (92 %), constant in only 0.7 % of cases, and **ending at exactly 0 on 94.4 %
+  of its 7,992 curves** — a quantity that dies out at end of life. It stays
+  within [0,255] on 99.6 % of curves and within [0,1] on 0.0 %, so it is on a
+  0–255 scale rather than normalised.
+- Channels 19–21 reach −360, −403, 720 and 848 — multiples of 360, so degrees.
+  But they are used only 45 times, far too few to conclude anything.
+- Channels 1 and 2 are constant in 51 % and 81 % of cases: multipliers left
+  at 1.
+
+Naming them beyond that would be guessing, so they are left unnamed.
 
 ## Reading a real file
 
@@ -170,13 +209,15 @@ python parse_eff.py --check         # the six section equalities
 python parse_eff.py --check-curves  # tiling and the [0,1] domain
 python parse_eff.py --check-res     # resource names exist on disc
 python parse_eff.py --names         # emitter names
+python parse_eff.py --channels      # channel stats + the ruled-out pairing
 ```
 
 ## What is still open
 
 - The meaning of the individual floats in the emitter's 620 bytes and the
   material's 56. They are readable; they are not named.
-- Which of the 22 channels is position, size, colour, rotation.
+- Which of the 22 channels is position, size, colour, rotation — with the
+  static-parameter pairing already ruled out (see above), this needs the DOL.
 - The three `A × 4` tables. The one at `+0x30` is **1 in all 8,637 records**;
   the others carry 68 and 76 distinct values.
 

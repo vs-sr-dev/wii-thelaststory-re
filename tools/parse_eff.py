@@ -95,11 +95,37 @@ Time is non-decreasing on 36,659/36,705 (99.87%): the 46 exceptions are tiny
 inversions between adjacent keys (0.37224 then 0.36909) - authoring noise, not
 a parsing error.
 
-The 22 channels are used at very different rates and look grouped by component
-(0-2, 3-5, 7-9, ...), but **the key counts within a group do not always match**
-(79% for the first group, 99% for the others): each component is keyed
-independently, so a group cannot be read as one vector curve. Which channel is
-which is not settled: that needs the DOL or an on-screen comparison.
+--- the 22 channels: what is known and what is NOT -------------------------
+They look grouped by component (0-2, 3-5, 7-9, 12-14, 15-17, 19-21, with 6 and
+18 standing alone), but **the key counts within a group do not always match**
+(79% for the first group, ~99% for the others): each component is keyed
+independently, so a group is not one vector curve.
+
+**TRIED AND FALSIFIED, do not redo it** (--channels): the idea was that if a
+channel animates a parameter, the curve's value at t=0 should equal the
+corresponding STATIC parameter inside the emitter's 620 bytes - which would
+pair channel <-> offset through a recomputable invariant. A first count looked
+like it worked (>90% on some channels) but it was **entirely an artefact**:
+those matches were on the values 0.0 and 1.0, which occupy dozens of static
+slots and match by chance. Repeating the count **on distinctive values only**
+(excluding 0, +-1, 0.5, 255, 360) the signal disappears: the best offset
+reaches 4% and in the vast majority of cases NO static offset matches at all
+(channel 0: 3,056 of 3,236 cases with no match). So the curve's initial value
+is **not duplicated** in the static block: the curve replaces the parameter
+rather than shadowing it. This really does need the DOL or an on-screen
+comparison.
+
+What can be stated as fact (--channels):
+  - **channel 6 is the universal one**: animated on 7,992 of 8,637 emitters
+    (92%), constant in only 0.7% of cases, and **ending at exactly 0 on 94.4%
+    of its 7,992 curves**. It is a quantity that dies out at end of life. It
+    stays within [0,255] on 99.6% of curves and within [0,1] on 0.0%, so it is
+    on a 0-255 scale.
+  - channels 19-21 hit -360, -403, 720 and 848: multiples of 360, so degrees.
+    But they are used only 45 times - far too few to conclude.
+  - channels 1 and 2 are constant in 51% and 81% of cases: multipliers left
+    at 1.
+Which quantity each one drives is NOT settled and is not guessed here.
 
 --- not decoded -------------------------------------------------------------
 Most of the emitter's 620 bytes and the material's 56 are readable floats with
@@ -112,6 +138,7 @@ Usage:
     python parse_eff.py --check-curves  # tiling and the [0,1] domain
     python parse_eff.py --check-res     # resource names exist on disc
     python parse_eff.py --names         # emitter names
+    python parse_eff.py --channels      # the 22 channels: facts + the ruled-out idea
 """
 import sys, os, glob, struct, collections
 
@@ -335,6 +362,75 @@ def names(paths=None):
         print(f"   {n!r:24s} x{c}")
 
 
+def channels(paths=None):
+    """The 22 channels: facts, plus the test that RULED OUT pairing a channel
+    with a static emitter parameter."""
+    BORING = (0.0, 1.0, -1.0, 0.5, 255.0, 360.0)
+    s = collections.defaultdict(lambda: collections.Counter())
+    rng = {}
+    hits = collections.defaultdict(collections.Counter)
+    distinctive = collections.Counter()
+    nomatch = collections.Counter()
+    for p in _files(paths):
+        d = open(p, "rb").read()
+        h = header(d)
+        for i in range(h["n_emitters"]):
+            eo = h["sections"][1] + i * EMI_SIZE
+            ct = h["sections"][4] + i * CURVETAB_SIZE
+            statics = {}
+            for o in range(64, EMI_SIZE - 3, 4):
+                v = struct.unpack_from("<f", d, eo + o)[0]
+                if v == v and abs(v) < 1e30:
+                    statics[o] = v
+            for k in range(N_SLOTS):
+                cnt, ptr = struct.unpack_from("<2I", d, ct + k * 8)
+                if not cnt:
+                    continue
+                vs = [struct.unpack_from("<f", d, ptr + j * KEY_SIZE + 4)[0]
+                      for j in range(cnt)]
+                c = s[k]
+                c["n"] += 1
+                c["ends at 0"] += vs[-1] == 0.0
+                c["constant"] += len(set(vs)) == 1
+                c["in [0,255]"] += all(0.0 <= v <= 255.0 for v in vs)
+                c["in [0,1]"] += all(0.0 <= v <= 1.0 for v in vs)
+                a, b = rng.get(k, (1e30, -1e30))
+                rng[k] = (min(a, min(vs)), max(b, max(vs)))
+                if vs[0] not in BORING:
+                    distinctive[k] += 1
+                    m = [o for o, sv in statics.items() if sv == vs[0]]
+                    if not m:
+                        nomatch[k] += 1
+                    for o in m:
+                        hits[k][o] += 1
+    print("=== the 22 curve channels ===")
+    print("ch  |   used | constant | ends at 0 | in [0,1] | in [0,255] |"
+          "        min |       max")
+    for k in range(N_SLOTS):
+        c = s.get(k)
+        if not c or not c["n"]:
+            print(f" {k:2d} | never used")
+            continue
+        n = c["n"]
+        lo, hi = rng[k]
+        print(f" {k:2d} | {n:6d} | {100*c['constant']/n:7.1f}% |"
+              f" {100*c['ends at 0']/n:8.1f}% | {100*c['in [0,1]']/n:7.1f}% |"
+              f" {100*c['in [0,255]']/n:9.1f}% | {lo:10.4g} | {hi:9.4g}")
+    print("\n--- RULED OUT: is curve(t=0) equal to a static emitter parameter?")
+    print("  (distinctive values only: 0, +-1, 0.5, 255 and 360 match dozens"
+          " of slots by chance)")
+    print("  ch  | distinctive cases | NO match at all | best offset")
+    for k in range(N_SLOTS):
+        n = distinctive[k]
+        if not n:
+            continue
+        best = hits[k].most_common(1)
+        b = f"+0x{best[0][0]:03x} {100*best[0][1]/n:.1f}%" if best else "-"
+        print(f"   {k:2d} | {n:17d} | {100*nomatch[k]/n:14.1f}% | {b}")
+    print("  -> the curve's initial value is NOT duplicated in the static"
+          " block: the curve replaces the parameter.")
+
+
 def summary(path):
     m = parse_file(path)
     h = m["header"]
@@ -368,6 +464,8 @@ if __name__ == "__main__":
         check_res()
     elif a[0] == "--names":
         names()
+    elif a[0] == "--channels":
+        channels()
     else:
         p = a[0] if os.path.exists(a[0]) else os.path.join(EFF_DIR, a[0])
         if not os.path.exists(p):
