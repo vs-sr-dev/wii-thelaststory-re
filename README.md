@@ -40,7 +40,7 @@ pipelines are documented with working extractors. Highlights:
 | **Gimmicks** `.gmk` | The interaction system as data: `STATE`/`TRIGGER` machine and `MOTCMD` commands anchored to animation frames |
 | **Areas** `.area` | Per-volume environment overrides (AABB proven twice); `SET_AREA` is visibility partitioning, not loading |
 | **Collision** `.hocb`/`.hcb` | Both reversed: self-relative offsets, triangle records (72 B / 68 B), the **octree validated on 253,447 nodes**, and a scene graph in `.hcb` |
-| **Effects** `.efp`/`.effconfig` | XML sequencer and area presets decoded; effects attach to the skeleton **by bone name**, verified against 4,691 models |
+| **Effects** `.efp`/`.effconfig`/`.eff` | Whole group decoded: XML sequencer (effects attach to the skeleton **by bone name**, verified against 4,691 models), area presets, and the particle binary — **little-endian**, with curves keyed over normalised lifetime (100 % on 36,705 curves) |
 | **`main.dol`** | Loaded in Ghidra via a custom DOL loader; 14,530 functions; boot call-graph reconstructed |
 | **Debug menu** | Present in retail but deliberately unlinked at the linker level (diagnosed) |
 
@@ -66,6 +66,7 @@ Full details are in [`docs/`](docs/).
 | [14 — Collision](docs/14-collision.md) | `.hocb` binary, self-relative offsets, the 72-byte triangle record, the octree |
 | [15 — Collision (`.hcb`)](docs/15-collision-hcb.md) | Gimmick collision: the 68-byte record, the scene graph, and the relocation table that proves the layout |
 | [16 — Effects](docs/16-effects.md) | `.efp` XML sequencer, bone-name attachment proven against the skeletons, `.effconfig` area presets |
+| [17 — `.eff` binary](docs/17-eff-binary.md) | The particle definition: little-endian, emitters and materials, curves keyed over normalised lifetime |
 
 ## Tools
 
@@ -107,6 +108,7 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `parse_hocb.py` | `.hocb` map collision: triangle soup, octree, materials, ground query |
 | `parse_hcb.py` | `.hcb` gimmick collision: 68-byte triangles, scene graph, relocation check |
 | `parse_efp.py` | `.efp` effect sequencer + `.effconfig` presets; bone-attachment cross-check |
+| `parse_eff.py` | `.eff` particle binary: emitters, materials, lifetime-keyed curves |
 | `rso_parse.py`, `rso_reloc.py`, `elfhash_search.py` | RSO/`.sel` module parsing & symbol hashing |
 | `ghidra_scripts/` | Java Ghidra scripts: DOL loader, reports, decompile |
 
