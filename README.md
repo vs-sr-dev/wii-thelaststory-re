@@ -107,7 +107,7 @@ classes that own one ([21](docs/21-indirect-calls.md)).
 | [11 — Maps & scenes](docs/11-maps-and-scenes.md) | `.map`/`.locator`/`.building`/`.chr`, f32 map geometry, instancing, walking on a map |
 | [12 — Gimmicks](docs/12-gimmicks.md) | `.gmk` interactive objects, the `STATE`/`TRIGGER` machine, `MOTCMD` animation-timeline scripting |
 | [13 — Areas](docs/13-areas.md) | `.area` per-volume environment overrides, the proven AABB layout, `SET_AREA` visibility partitioning |
-| [14 — Collision](docs/14-collision.md) | `.hocb` binary, self-relative offsets, the 72-byte triangle record, the octree |
+| [14 — Collision](docs/14-collision.md) | `.hocb` binary, self-relative offsets, the 72-byte triangle record, the octree, and the exclusion-mask bits for water, unstandable terrain and invisible walls |
 | [15 — Collision (`.hcb`)](docs/15-collision-hcb.md) | Gimmick collision: the 68-byte record, the scene graph, and the relocation table that proves the layout |
 | [16 — Effects](docs/16-effects.md) | `.efp` XML sequencer, bone-name attachment proven against the skeletons, `.effconfig` area presets |
 | [17 — `.eff` binary](docs/17-eff-binary.md) | The particle definition: little-endian, emitters and materials, curves keyed over normalised lifetime |

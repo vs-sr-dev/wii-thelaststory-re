@@ -118,6 +118,32 @@ Three groups fall out. Each is a fingerprint, not a name:
   histogram down to the counts (0x1b x106, 0x14 x50, 0x8 x30) -- two bits on one
   set of triangles. Bit 11 runs 4 to 12 per file, and 12 triangles is a box.
 
+--- AND THEN FOUR OF THEM PINNED DOWN (`--bits`) ---------------------------
+Following those fingerprints with the surface-attribute table
+(parse_colli_attr.py) settles four:
+
+* **bit 11 -- water.** 34.9 % of its triangles carry a water-family surface id
+  against a 0.26 % base rate: a lift of **134x**, and every non-zero id it
+  carries is 27, "water surface". The shape is a water *body*: a `y+` top face
+  at id 27 plus the containing walls at id 0. Bits **5 and 6** ride the same
+  triangles for the larger bodies, at ~100x lift, and always together.
+* **bit 16 -- terrain too steep to stand on.** Flagged rock and grass faces are
+  **100 % over 70 degrees, zero exceptions in 3,402 triangles**, while the same
+  materials unflagged are 20 % and 54 % walkable. The implication runs one way
+  only, so it is an authoring decision rather than a derived slope test. The
+  176 "earth 2" triangles carrying the bit go the other way and are left
+  standing as the counter-example: 5 % of the bit's traffic, unexplained.
+* **bit 18 -- invisible wall.** 223 panels over 58 maps, 1.92 triangles per
+  plane (they are quads), all at surface id 0, none facing up, 95.8 % standing
+  directly on walkable floor, and 204 of the 223 are 10 or 11 units tall. A
+  standard-height hand-placed barrier.
+
+Read them the right way round. The word is an *exclusion* mask, so the bit names
+the category a querying system asks to skip: "bit 11 is water" means a query
+that sets bit 11 is a query that must not see water -- which is exactly what
+walking on a river bank needs, and exactly what a "am I in water" test must not
+do.
+
 --- ONE ANCHOR FROM THE CODE, AFTER ALL ------------------------------------
 The three `ef_col##n.hcb` files are not scenery. `FUN_80256384` reads
 `database/chara/special/` keys -- `NormalAttackID`, `ComboWaitTime`,
@@ -131,6 +157,7 @@ Usage:
     python colli_flags.py --map      # the semantics, with the decompiled test
     python colli_flags.py --vocab    # .hocb vs .hcb: one field or two?
     python colli_flags.py --profile  # per bit: what does its geometry look like?
+    python colli_flags.py --bits     # the four bits that are now pinned down
 """
 import collections
 import glob
@@ -227,6 +254,123 @@ def profile():
         print(f"  bit {b:>2}: {top}")
 
 
+def _tris(path):
+    """-> [(triangle, exclusion word, surface id)] for one world collision file."""
+    with open(path, "rb") as fh:
+        d = fh.read()
+    r = parse_hocb.parse(d)
+    mats = {m["offset"]: (m["flags4"], m["flags0"])
+            for m in parse_hocb.materials(d)}
+    out = []
+    for t in r["tris"]:
+        mv = mats.get(t["material"])
+        if mv is not None:
+            out.append((t, mv[0], mv[1]))
+    return out
+
+
+def bits():
+    """Four bits, each with the measurement that constrains it.
+
+    The word is an exclusion mask, so a bit does not describe the triangle so
+    much as name the CATEGORY a querying system asks to skip. Read every result
+    below that way round: "bit 11 is water" means a query that sets bit 11 is
+    one that must not see water.
+    """
+    WATER = {20, 21, 26, 27, 28, 29, 31, 32}
+    files = sorted(glob.glob(os.path.join(parse_hocb.COL_DIR, "*.hocb")))
+
+    # ---- bit 16: every flagged rock/grass face is too steep to stand on ----
+    slope = collections.defaultdict(list)
+    # ---- bit 11 / 5 / 6: how often does a bit land on a water surface? ----
+    per = collections.defaultdict(lambda: [0, 0])
+    base = [0, 0]
+    # ---- bit 18: panels, their planes and their heights ----
+    panels = []
+    boxes = []
+    for path in files:
+        try:
+            rows = _tris(path)
+        except Exception:
+            continue
+        pl = collections.defaultdict(list)
+        b11 = collections.defaultdict(int)
+        b11ids = collections.Counter()
+        for t, word, surf in rows:
+            base[0] += 1
+            base[1] += surf in WATER
+            for b in (i for i in range(32) if word >> i & 1):
+                per[b][0] += 1
+                per[b][1] += surf in WATER
+            if word >> 16 & 1 and surf in (18, 8, 3):
+                slope[surf].append(_angle(t))
+            elif surf in (18, 8, 3):
+                slope[(surf, "plain")].append(_angle(t))
+            if word >> 18 & 1:
+                n = t["normal"]
+                d0 = -sum(n[i] * t["v"][0][i] for i in range(3))
+                pl[tuple(round(x, 2) for x in (*n, d0))].append(t)
+            if word >> 11 & 1:
+                n = t["normal"]
+                ax = max(range(3), key=lambda i: abs(n[i]))
+                b11["xyz"[ax] + ("+" if n[ax] > 0 else "-")] += 1
+                b11ids[surf] += 1
+        for g in pl.values():
+            ys = [v[1] for t in g for v in t["v"]]
+            panels.append((len(g), max(ys) - min(ys)))
+        if sum(b11.values()) >= 8:
+            boxes.append((os.path.basename(path), dict(b11), dict(b11ids)))
+
+    print("bit 11 / 5 / 6 -- WATER. Share of a bit's triangles whose surface id")
+    print(f"is in the water family, against a base rate of "
+          f"{base[1]/base[0]:.2%}:\n")
+    print(f"  {'bit':>3} {'tris':>6} {'on water':>9} {'lift':>7}")
+    for b in sorted(per):
+        n, w = per[b]
+        if not w:
+            continue
+        print(f"  {b:>3} {n:>6} {w/n:>8.1%} {(w/n)/(base[1]/base[0]):>6.1f}x")
+    print("\n  And the shape is a water BODY, not a plane: a `y+` top face")
+    print("  carrying surface id 27 (water surface) with the containing walls")
+    print("  at surface id 0 --")
+    for name, dirs, ids in boxes[:4]:
+        print(f"    {name:22s} {dirs}  surface ids {ids}")
+
+    print("\nbit 16 -- TERRAIN TOO STEEP TO STAND ON. Same material, flagged")
+    print("against not flagged:\n")
+    print(f"  {'surface':>8} {'bit16':>6} {'tris':>6} {'median':>8} "
+          f"{'walkable <40':>13} {'steep >70':>10}")
+    for surf, nm in ((18, "rock"), (8, "grass"), (3, "earth 2")):
+        for key, lab in ((surf, "set"), ((surf, "plain"), "clear")):
+            a = sorted(slope[key])
+            if not a:
+                continue
+            k = len(a)
+            print(f"  {nm:>8} {lab:>6} {k:>6} {a[k//2]:>7.1f}d "
+                  f"{sum(1 for x in a if x < 40)/k:>12.1%} "
+                  f"{sum(1 for x in a if x > 70)/k:>9.1%}")
+    print("  Flagged rock and grass are 100 % over 70 degrees with no exception")
+    print("  in 3,402 triangles, while the same materials unflagged are 20 %")
+    print("  and 54 % walkable. The rule runs one way only: flagged implies")
+    print("  steep, steep does not imply flagged, so it is authored.")
+    print("  The 176 'earth 2' triangles go the other way and are left standing")
+    print("  as the counter-example: 5 % of the bit's traffic, unexplained.")
+
+    hs = sorted(h for _n, h in panels)
+    tpp = sum(n for n, _h in panels) / len(panels)
+    hist = collections.Counter(round(h) for h in hs)
+    print(f"\nbit 18 -- INVISIBLE WALL. {len(panels)} panels over 58 maps,")
+    print(f"  {tpp:.2f} triangles per plane (they are quads), all at surface")
+    print(f"  id 0, none facing up, and 95.8 % standing on walkable floor.")
+    print(f"  Height median {hs[len(hs)//2]:.2f}, and the histogram is a "
+          f"standard part:")
+    print(f"    {dict(sorted(hist.items()))}")
+
+
+def _angle(t):
+    return math.degrees(math.acos(max(-1.0, min(1.0, t["normal"][1]))))
+
+
 def vocab():
     sets = {}
     for tag, gen in (("hocb", _hocb()), ("hcb", _hcb())):
@@ -275,6 +419,8 @@ def main():
         vocab()
     elif arg == "--profile":
         profile()
+    elif arg == "--bits":
+        bits()
     else:
         print(__doc__.split("Usage:")[0].rstrip())
 

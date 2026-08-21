@@ -423,6 +423,58 @@ Three groups, and each is a fingerprint rather than a name:
   they are two bits on one set of triangles. Bit 11 runs 4 to 12 per file, and
   12 triangles is a box.
 
+### Four bits, pinned down — `colli_flags.py --bits`
+
+Following the fingerprints into the surface-attribute table
+([`parse_colli_attr.py`](../tools/parse_colli_attr.py), 33 named surfaces)
+settles four of them. Read them the right way round: the word is an *exclusion*
+mask, so a bit names the category a querying system asks to **skip**.
+
+**Bit 11 — water.** 34.9 % of its triangles carry a water-family surface id
+against a 0.26 % base rate: a lift of **134×**, and every non-zero id it carries
+is 27, *water surface*. The shape is a water **body**, not a plane — a `y+` top
+face at id 27 with the containing walls at id 0:
+
+```
+tw02_02_02.hocb   {y+: 4, z+: 2, x-: 2, z-: 2}   surface ids {27: 4, 0: 6}
+tw02_04_02.hocb   {y+: 2,        x-: 8, z-: 2}   surface ids {27: 2, 0: 10}
+```
+
+Bits **5 and 6** ride the same triangles for the larger bodies, at 105× and 93×
+lift, and always together. "Bit 11 is water" means *a query that sets bit 11 is
+one that must not see water* — which is what walking along a river bank needs,
+and exactly what an "am I standing in water" test must not do.
+
+**Bit 16 — terrain too steep to stand on.** Same material, flagged against not:
+
+| surface | bit 16 | tris | median slope | walkable (<40°) | steep (>70°) |
+|---|---|---|---|---|---|
+| rock | set | 2178 | 90.0° | **0.0 %** | **100.0 %** |
+| rock | clear | 4808 | 90.0° | 20.3 % | 79.7 % |
+| grass | set | 1224 | 90.0° | **0.0 %** | **100.0 %** |
+| grass | clear | 6135 | 25.8° | 53.7 % | 36.8 % |
+| earth 2 | set | 176 | 19.5° | 61.4 % | 37.5 % |
+| earth 2 | clear | 1536 | 90.0° | 22.2 % | 77.5 % |
+
+Flagged rock and grass are over 70° **without a single exception in 3,402
+triangles**, where the same materials unflagged are 20 % and 54 % walkable. The
+implication runs one way only — flagged implies steep, steep does not imply
+flagged — so this is an authoring decision, not a slope test the exporter ran.
+The 176 *earth 2* triangles go the other way and are left standing as the
+counter-example: 5 % of the bit's traffic, unexplained.
+
+**Bit 18 — invisible wall.** 223 panels across 58 maps at **1.92 triangles per
+plane**, i.e. quads. All at surface id 0, none facing up, 95.8 % standing
+directly on walkable floor, and the height histogram is a standard part:
+
+```
+height  5:1   7:3   8:6   10:114   11:90   14:6   23:3
+```
+
+204 of 223 are 10 or 11 units tall. A material-less quad of standard height,
+hand-placed on the floor, that some systems must ignore: there is no other thing
+that is.
+
 ### One anchor from the code, after all
 
 The three `ef_col##n.hcb` files are not scenery. `FUN_80256384` reads
@@ -437,12 +489,18 @@ rather than a property of the triangle.
 
 ## What is still open
 
-- The names of the exclusion-mask bits. Three grep-shaped routes were ruled out
-  here; a fourth, an abstract interpreter over every indirect call site, ruled
-  out a whole region of the search space and is written up with what it did
-  establish in [21 — Resolving the indirect calls](21-indirect-calls.md). What
-  is left is the profile above: constrained guesses a test could settle, rather
-  than nothing.
+- The names of the remaining exclusion-mask bits. **11, 16 and 18 are settled
+  above**, and 5 and 6 travel with 11. Still open: **9**, which is the bulk of
+  the traffic (48,806 triangles, mostly surface id 0 and stone paving) and looks
+  like a default rather than a category; **1, 2, 3, 4 and 8**, five wall-shaped
+  bits that need separating from one another; **7** (2,016 triangles, 21× water
+  lift, so water-adjacent); and **17**, which appears in exactly two dungeon
+  maps at 96 triangles each, half surface id 0 and half sand.
+- Three grep-shaped routes to the *code* were ruled out here, and a fourth — an
+  abstract interpreter over every indirect call site — ruled out a whole region
+  of the search space; see [21 — Resolving the indirect
+  calls](21-indirect-calls.md). The bits above were settled from the data
+  instead.
 - The material flags — the surface semantics (attempted; see above for the three
   readings that were ruled out).
 - The `0x003` tail section (24 bytes).
