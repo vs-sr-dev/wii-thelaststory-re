@@ -233,7 +233,9 @@ def coverage(dol, funcs=FUNCS):
     print(f"\ntotal paired-singles   : {pi+po:,}")
     print(f"  of them outside a fn : {po/max(1,pi+po):.1%}"
           f"   (uncovered text is only {1-covered/total:.1%})")
-    print(f"  density ratio        : {(po/max(1,no))/max(pi/max(1,ni),1e-12):.0f}x")
+    ratio = (po / max(1, no)) / max(pi / max(1, ni), 1e-12)
+    print(f"  density ratio        : {ratio:.2f}x"
+          f"   (>1 = paired-singles concentrate in the blind spots)")
 
 
 def main():

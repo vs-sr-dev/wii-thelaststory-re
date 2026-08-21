@@ -27,6 +27,13 @@ method. **704 records** carry **13,069 code pointers** between them.
 The failure mode is obvious — a string pointer followed by words that merely
 look like addresses. Two independent tests answer it (`dol_classes.py --proof`).
 
+> **Corrected in [21](21-indirect-calls.md).** The "floor" reading below is
+> wrong. With Ghidra reading 97.6 % of the text the figure is 28.4 %, i.e.
+> unchanged; the real explanation is that 71 % of vtable slots are targets
+> Ghidra never makes into functions at all, most of them one-line stubs that
+> nothing ever calls directly. Among targets that look like real functions the
+> rate is **98.5 %**.
+
 **1. Against Ghidra's own function list.** 28.3 % of the pointers are exact
 function *entry* points, against 0.59 % for the same number of randomly chosen
 4-aligned text words — a **37× lift**. The 28 % is a floor rather than the true

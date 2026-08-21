@@ -85,8 +85,10 @@ The natural next step for several of these is `main.dol` itself, which is now a
 far better place to look than it was: it still carries its **C++ class names**
 ([18](docs/18-dol-classes.md)), and with a Gekko processor language installed
 Ghidra reads **97.6 %** of its code instead of 44 %
-([19](docs/19-gekko-sleigh.md)). The collision material bitfield is the obvious
-next beneficiary.
+([19](docs/19-gekko-sleigh.md)). Its C++ *indirect* calls are now readable too:
+an abstract interpreter recovers the object and the slot at each virtual call
+site, which gives 5,147 of its functions a class and a member layout for the
+classes that own one ([21](docs/21-indirect-calls.md)).
 
 ## Documentation
 
@@ -112,6 +114,7 @@ next beneficiary.
 | [18 — DOL class names](docs/18-dol-classes.md) | RTTI survived the strip: 704 C++ class names and their vtables, recovering named functions |
 | [19 — A Gekko SLEIGH for Ghidra](docs/19-gekko-sleigh.md) | Teaching Ghidra the Wii's paired-single instructions: 44 % → 97.6 % of the text, with the before/after measurement |
 | [20 — The 22 `.eff` channels](docs/20-eff-channels.md) | The curve evaluator, the group bitmask at `+0x28`, and the 77,733/77,733 check that proves the map |
+| [21 — Resolving the indirect calls](docs/21-indirect-calls.md) | Reading the register file instead of grepping bytes: virtual call sites, recovered object layouts, 5,147 functions given a class |
 
 ## Tools
 

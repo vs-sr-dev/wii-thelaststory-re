@@ -384,6 +384,10 @@ python parse_hocb.py FILE --obj OUT.obj # export the soup as a mesh
 
 ## What is still open
 
+- The names of the exclusion-mask bits. Three grep-shaped routes were ruled out
+  here; a fourth, an abstract interpreter over every indirect call site, ruled
+  out a whole region of the search space and is written up with what it did
+  establish in [21 — Resolving the indirect calls](21-indirect-calls.md).
 - The material flags — the surface semantics (attempted; see above for the three
   readings that were ruled out).
 - The `0x003` tail section (24 bytes).

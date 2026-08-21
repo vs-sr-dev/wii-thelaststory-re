@@ -57,6 +57,7 @@ Usage:
     python dol_classes.py Effect Colli       # filter by name substring
     python dol_classes.py --engine           # skip std:: / boost:: noise
     python dol_classes.py --proof            # run the two tests above
+    python dol_classes.py --proof --funcs ghidra_out_gekko/functions.txt
     python dol_classes.py --csv out.csv      # class,address,index,function
 """
 import collections
@@ -169,7 +170,10 @@ def classify(dol, va):
     return "other"
 
 
-def proof(dol, recs):
+def proof(dol, recs, funcs=None):
+    global FUNCS
+    if funcs:
+        FUNCS = funcs
     ptrs = [m for r in recs for m in r["methods"]]
     n = len(ptrs)
     print(f"records: {len(recs)}   vtable pointers: {n}\n")
@@ -217,7 +221,10 @@ def main():
     args = sys.argv[1:]
 
     if args and args[0] == "--proof":
-        proof(dol, recs)
+        funcs = None
+        if "--funcs" in args:
+            funcs = args[args.index("--funcs") + 1]
+        proof(dol, recs, funcs)
         return
 
     if args and args[0] == "--csv":
