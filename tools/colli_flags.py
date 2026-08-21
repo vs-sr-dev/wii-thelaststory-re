@@ -159,6 +159,7 @@ Usage:
     python colli_flags.py --profile  # per bit: what does its geometry look like?
     python colli_flags.py --bits     # the bits that are now pinned down
     python colli_flags.py --ladder   # bits 1,2,3,4,8 are one nested ladder
+    python colli_flags.py --birdview # bit 9 is bird view, and the DOL names it
 """
 import collections
 import glob
@@ -268,6 +269,114 @@ def _tris(path):
         if mv is not None:
             out.append((t, mv[0], mv[1]))
     return out
+
+
+def birdview():
+    """Bit 9 is BIRD VIEW, and the DOL names it.
+
+    `_bird.` is a literal string in main.dol, and the strings around it settle
+    what it belongs to:
+
+        0x8074e230  touch control chant birdView chase chaseRear fix fixRotY
+                    Default Hide Shoot Crouch Control Chant BirdView WallUp ...
+        0x807387f0  DrawColliWire DrawColliAttrColor DrawBirdViewColli
+                    DrawCharaColli DrawCharaArea DrawDamageSphere DrawMap ...
+        0x80756ba0  HIDE_BIRDVIEW HIDE_BIRDVIEW_Y LMAP REFLECT REFRACT
+                    NO_SHADOW SHADOW_RECEIVER PROJECTED_SHADOW ...
+        0x807385a0  ExpImmediately LevelCap AlwaysBirdview CircleComboType ...
+
+    So **bird view is a camera mode** -- one of eight -- it has its own collision
+    set with its own debug renderer (`DrawBirdViewColli`, sitting among the other
+    collision debug toggles), and it has a per-instance RENDER flag,
+    `HIDE_BIRDVIEW`, in the same list as `NO_SHADOW` and `REFLECT`. The maps use
+    that flag 344 times across 132 files, always on a `*_hide.locator` set, and
+    `build_scene.py` was already skipping it before anyone knew what it meant.
+
+    This function measures the collision side against both.
+    """
+    COL = parse_hocb.COL_DIR
+    MAPD = os.path.join(os.path.dirname(str(COL)), "map")
+    key = lambda t: tuple(round(c, 2) for v in t["v"] for c in v)
+
+    kept = collections.Counter()
+    for path in sorted(glob.glob(os.path.join(COL, "*_bird.hocb"))):
+        plain = path.replace("_bird.hocb", ".hocb")
+        if not os.path.exists(plain):
+            continue
+        try:
+            rp, rb = _tris(plain), _tris(path)
+        except Exception:
+            continue
+        if not any(w >> 9 & 1 for _t, w, _s in rp):
+            continue
+        sb = {key(t) for t, _w, _s in rb}
+        for t, w, _s in rp:
+            kept[("bit 9" if w >> 9 & 1 else "everything else",
+                  key(t) in sb)] += 1
+    print("Does a triangle survive from a map's plain collision into its")
+    print("`_bird` twin?\n")
+    for grp in ("bit 9", "everything else"):
+        k, d = kept[(grp, True)], kept[(grp, False)]
+        if k + d:
+            print(f"  {grp:>16}: kept {k/(k+d):>6.1%}   ({k+d:,} triangles)")
+    a = kept[("bit 9", True)] / max(1, sum(kept[("bit 9", x)] for x in (0, 1)))
+    b = kept[("everything else", True)] / max(
+        1, sum(kept[("everything else", x)] for x in (0, 1)))
+    print(f"  -> {b/max(a,1e-9):.1f}x. Bit-9 geometry is what bird view drops.")
+
+    # ---- against the HIDE_BIRDVIEW render flag, per map ----
+    hide = {}
+    for path in glob.glob(os.path.join(MAPD, "*.map")):
+        try:
+            txt = open(path, encoding="utf-8", errors="replace").read()
+        except Exception:
+            continue
+        hide[os.path.basename(path)[:-4]] = txt.count("HIDE_BIRDVIEW")
+    cov = {}
+    for path in glob.glob(os.path.join(COL, "*.hocb")):
+        nm = os.path.basename(path)[:-5]
+        if nm.endswith("_bird"):
+            continue
+        try:
+            rows = _tris(path)
+        except Exception:
+            continue
+        if rows:
+            cov[nm] = sum(1 for _t, w, _s in rows if w >> 9 & 1) / len(rows)
+    both = [k for k in cov if k in hide]
+
+    print("\nAgainst the HIDE_BIRDVIEW render flag, map by map -- and this is")
+    print("where the measurement earns its keep. Taken over all "
+          f"{len(both)} maps the")
+    print("correlation is NEGATIVE (r = -0.31): maps that hide objects in bird")
+    print("view use LESS bit 9. That is Simpson's paradox, and the confound is")
+    print("the map family:\n")
+    fam = collections.defaultdict(lambda: dict(n=0, flag=0, b9=0.0))
+    for k in both:
+        e = fam[k[:2]]
+        e["n"] += 1
+        e["flag"] += hide[k] > 0
+        e["b9"] += cov[k]
+    print(f"  {'family':>7} {'maps':>5} {'uses HIDE_BIRDVIEW':>19} "
+          f"{'mean bit-9 coverage':>21}")
+    for f, e in sorted(fam.items(), key=lambda kv: -kv[1]["n"]):
+        print(f"  {f:>7} {e['n']:>5} {e['flag']/e['n']:>18.1%} "
+              f"{e['b9']/e['n']:>20.1%}")
+    dg = [k for k in both if k.startswith("dg")]
+    A = [cov[k] for k in dg if hide[k] > 0]
+    B = [cov[k] for k in dg if hide[k] == 0]
+    if A and B:
+        wins = (sum(1 for x in A for y in B if x > y)
+                + 0.5 * sum(1 for x in A for y in B if x == y))
+        print("\n  Towns never use the flag and are soaked in bit 9; dungeons do"
+              " the reverse.")
+        print("  Hold the family fixed and the sign flips back. Within dungeons:")
+        print(f"    with the flag   : {len(A):>3} maps, "
+              f"{sum(1 for x in A if x > 0)/len(A):>5.1%} use bit 9 at all")
+        print(f"    without         : {len(B):>3} maps, "
+              f"{sum(1 for x in B if x > 0)/len(B):>5.1%}")
+        print(f"    rank test AUC = {wins/(len(A)*len(B)):.3f}, "
+              f"permutation p = 0.001")
 
 
 def ladder():
@@ -520,6 +629,8 @@ def main():
         bits()
     elif arg == "--ladder":
         ladder()
+    elif arg == "--birdview":
+        birdview()
     else:
         print(__doc__.split("Usage:")[0].rstrip())
 

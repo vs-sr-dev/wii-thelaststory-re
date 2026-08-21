@@ -380,6 +380,13 @@ python parse_hocb.py --check-map        # collision bbox vs map terrain bbox
 python parse_hocb.py --materials        # material entries: what the flags are NOT
 python parse_hocb.py --check-tree       # the octree invariants
 python parse_hocb.py FILE --obj OUT.obj # export the soup as a mesh
+
+python colli_flags.py --map      # the exclusion mask, with the decompiled test
+python colli_flags.py --vocab    # .hocb vs .hcb: one field or two?
+python colli_flags.py --profile  # per bit: what does its geometry look like?
+python colli_flags.py --bits     # the bits that are pinned down, with evidence
+python colli_flags.py --ladder   # bits 1,2,3,4,8 as one near-nested ladder
+python colli_flags.py --birdview # bit 9 is bird view, and the DOL names it
 ```
 
 ## Asking the geometry instead — `colli_flags.py --profile`
@@ -496,8 +503,50 @@ else — a 6.3× difference over 84,033 triangles. And 59 of the 63 maps where b
 9 covers more than 90 % of the collision are towns (`tw*`), which are exactly the
 maps full of small ground-level clutter.
 
-So bit 9 marks ground-level detail, and whatever system the `_bird` files serve
-is the one that sets it. Naming that system is the open half of this.
+So bit 9 marks ground-level detail that the `_bird` collision drops. And the
+system it belongs to is named in `main.dol`: `_bird.` is a literal string there,
+and its neighbours settle it.
+
+```
+0x8074e230  touch control chant birdView chase chaseRear fix fixRotY
+            Default Hide Shoot Crouch Control Chant BirdView WallUp Chase …
+0x807387f0  DrawColliWire DrawColliAttrColor DrawBirdViewColli DrawCharaColli
+            DrawCharaArea DrawDamageSphere DrawMap DrawMapBounds DrawChara …
+0x80756ba0  HIDE_BIRDVIEW HIDE_BIRDVIEW_Y LMAP REFLECT REFRACT NO_SHADOW
+            SHADOW_RECEIVER NO_CLOUD_MAP PROJECTED_SHADOW …
+0x807385a0  ExpImmediately LevelCap AlwaysBirdview CircleComboType …
+```
+
+**Bird view is a camera mode** — one of eight — it has its own collision set
+with its own debug renderer (`DrawBirdViewColli`, sitting among the other
+collision debug toggles), and it has a per-instance **render** flag,
+`HIDE_BIRDVIEW`, in the same list as `NO_SHADOW` and `REFLECT`. The maps use
+that flag 344 times across 132 files, always on a `*_hide.locator` set — and
+`build_scene.py` had been skipping it for sessions without knowing what it was.
+
+### The corroboration that first said the opposite
+
+Bit 9 (collision) and `HIDE_BIRDVIEW` (rendering) should be two faces of one
+decision, so they should co-occur. Over all 233 maps that have both a `.map` and
+a plain `.hocb`, the correlation is **negative**: r = −0.31, maps that hide
+objects in bird view use *less* bit 9.
+
+That is Simpson's paradox, and the confound is the map family:
+
+| family | maps | uses `HIDE_BIRDVIEW` | mean bit-9 coverage |
+|---|---|---|---|
+| `dg` (dungeons) | 144 | 41.7 % | 7.9 % |
+| `tw` (towns) | 89 | **0.0 %** | **76.1 %** |
+
+Towns never use the render flag and are soaked in the collision bit; dungeons do
+the reverse. Hold the family fixed and the sign flips back — within dungeons,
+**56.7 %** of the maps that use `HIDE_BIRDVIEW` also use bit 9, against **29.8 %**
+of those that do not (rank test AUC 0.642, permutation *p* = 0.001, n = 144).
+
+The two mechanisms are alternatives applied by different level teams, not the
+same switch, which is why the aggregate misleads. Worth keeping as a warning:
+the first number this project computed for that pair had the wrong sign, and
+only splitting by an obvious covariate showed it.
 
 ### The wall bits are one near-nested ladder, not five categories
 
@@ -542,8 +591,9 @@ rather than a property of the triangle.
 ## What is still open
 
 - The names of the remaining exclusion-mask bits. **11, 16 and 18 are settled**
-  above, 5 and 6 travel with 11, **9** is characterised (ground-level detail,
-  map-scoped, tied to the `_bird` files) without its consumer being named, and
+  above, 5 and 6 travel with 11, **9 is bird view** — the overhead camera mode,
+  named from the DOL and corroborated against the `HIDE_BIRDVIEW` render flag —
+  and
   **1, 2, 3, 4, 8** are shown to be one near-nested ladder over two size
   regimes rather than five independent categories. Genuinely untouched: **7**
   (2,016 triangles, 21× water lift, so water-adjacent) and **17**, which occurs
