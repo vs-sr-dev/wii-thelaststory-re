@@ -52,7 +52,7 @@ offset. The record sizes fall out of that, and they are exact on **every file**:
 | `[+0x2c, +0x30)` | **A × 176** | curve tables, one per emitter |
 | `[+0x30, +0x34)` | A × 4 | one u32 per emitter (always 1) |
 | `[+0x34, +0x40)` | 0 | empty in every file |
-| `[+0x40, +0x44)` | A × 4 | one u32 per emitter |
+| `[+0x40, +0x44)` | A × 4 | one u32 per emitter — a second mask, **which channel groups are inert**, see [20](20-eff-channels.md) |
 | `[+0x44, EOF)` | — | tail: the curve key data |
 
 These are what establish that `A` and `B` are counters and that the records are
@@ -316,8 +316,11 @@ the code that consumes them during simulation, or an on-screen comparison.
 - Which of the 22 channels is position, size, colour, rotation. The
   static-parameter pairing is ruled out (above) and the loader does not say —
   the next target is the simulation code that reads the curve block.
-- The three `A × 4` tables. The one at `+0x30` is **1 in all 8,637 records**;
-  the others carry 68 and 76 distinct values.
+- ~~The three `A × 4` tables.~~ Two of the three are settled: `+0x28` is the
+  keyed-group mask ([20](20-eff-channels.md)) and `+0x40` the inert-group mask,
+  proved 38,105/38,105 in the same page. The one at `+0x30` is **1 in all 8,637
+  records** and is read by no code in `main.dol` — still unexplained, but it
+  carries no information either.
 - The 272-byte third record type and its 13 channels: supported by the loader,
   used by nothing on this disc.
 

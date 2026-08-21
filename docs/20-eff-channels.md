@@ -261,6 +261,83 @@ axis at channel 8, i.e. `particle+0x9c`, which is the component the code
 subtracts gravity from and tests against the floor. The data and the code pick
 the same axis without being told.
 
+
+# The third `A x 4` table: which groups are inert
+
+Session 8 recorded three `A x 4` tables and explained none of them. Session 10
+named the first (`+0x28`, the keyed-group mask). This is the third, at file
+header **`+0x40`**, and it is read in exactly one place: `FUN_8023193c`, wrapped
+*around* the `tab28` test.
+
+```
+if (tab40 == NULL || (tab40[e] & bit) != bit) {     <- if set, skip everything
+    if (tab28[e] & bit28)  evaluate the curve
+    else                   integrate the rate
+}
+```
+
+A note on reading the runtime object: the loader keeps the header from `+0x10`
+onward, so the code's `eff+0x18` is file header `+0x28` and `eff+0x30` is file
+header `+0x40`. Two independently known tables fix that shift — `eff+0x1c` is
+the curve-table pointer the evaluator uses, which is header `+0x2c`.
+
+`tab40` numbers the groups its own way, and the difference is informative:
+
+| tab40 bit | tab28 | group | read by the DOL? |
+|---|---|---|---|
+| `0x01` | `0x001` | 12,13,14 emitter displacement | **never** |
+| `0x02` | `0x002` | 15,16,17 rotation | yes |
+| `0x04` | `0x004` | 0,1,2 scale | yes |
+| `0x08` | `0x008` | 7,8,9 velocity | yes |
+| `0x10` | `0x010`\|`0x020` | 3,4,5,6 colour | yes |
+| `0x20` | `0x040` | 18 | yes |
+| `0x40` | `0x080` | 19,20,21 spin | yes |
+
+Colour costs `tab28` two bits and costs this table one. Channels 10,11 get no
+bit **at all** — and they are the one group with neither a static nor a rate, so
+there is no per-frame work to skip. The table has a bit exactly where there is
+something to skip.
+
+Six of the seven pairings fall out of the data on their own: for each `tab40`
+bit there is exactly one `tab28` bit it never co-occurs with, and it is the
+partner above. The colour pairing comes from the code, which reads `tab28` and
+takes the popcount of bits 4 and 5 immediately inside the guard.
+
+## What the bit means, and the check that decides it
+
+Two readings fit the code equally well — "freeze this group at its birth value"
+or "this group has no per-frame work at all". They differ in something
+checkable: only the second requires the group's **rate** field to be zero, and
+nothing in the file format ties this table to those floats.
+
+```
+ tab40 group                        set  also keyed   rate==0  (both clear) rate==0  in DOL
+--------------------------------------------------------------------------------------------
+   0x1 12,13,14 displacement      8,376           0         -                     -  NO
+   0x2 15,16,17 rotation          6,500           0         -                     -  yes
+   0x4 0,1,2 scale                3,209           0    100.0%                 10.1%  yes
+   0x8 7,8,9 velocity             6,001           0         -                     -  yes
+  0x10 3,4,5,6 colour               641           0    100.0%                 25.0%  yes
+  0x20 18                         6,104           0    100.0%                  3.2%  yes
+  0x40 19,20,21 spin              7,274           0    100.0%                 68.4%  yes
+--------------------------------------------------------------------------------------------
+ TOTAL                           38,105           0    100.0%
+
+emitters setting a tab40 bit outside 0x7f: 0 of 8,637
+```
+
+**38,105 set bits and not one co-occurs with its `tab28` partner.** Where the
+group has a rate, that rate is **0.0 in 100 % of the 17,228 cases** the bit is
+set, against 3–68 % when both masks are clear. No emitter sets a bit outside the
+seven. So `tab40` is not a freeze flag: it is a **work-skipping mask**, written
+by the authoring tool exactly when a group's per-frame update would have been a
+no-op, and every group therefore has three states — keyed, rate-driven, inert.
+
+And bit `0x01` is written by the tool on 8,376 of 8,637 emitters and read by
+**no code in `main.dol`**. That is the same shape as the third record type the
+loader supports and the game never uses ([17](17-eff-binary.md)): the exporter
+is more general than this engine.
+
 ## Still open
 
 - **Channel 18** (`particle+0x0cc`) and **channels 10,11** (`particle+0x0dc`).
@@ -272,6 +349,9 @@ the same axis without being told.
   `[-1,1]`. The one name enriched on the 10/11 group above threshold, in the
   whole vocabulary, is `軌跡` — *trail* — at 35.7 % against a 12.7 % base. That is
   a lead, not evidence.
+- **`tab30`, the table at header `+0x30`.** Value 1 in all 8,637 records and
+  read by no code in `main.dol`. It carries no information, so there is nothing
+  to recover; recorded here so nobody spends a session on it.
 - **The colour normalisation point.** Narrowed: `--const 0.003921569` finds the
   20 functions in `main.dol` that load 1/255, and exactly two are in the effect
   module (`FUN_80228ca0`, `FUN_8023193c`). Not yet pinned to an instruction.

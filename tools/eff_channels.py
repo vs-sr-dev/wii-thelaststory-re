@@ -57,9 +57,19 @@ from the data alone: the emitters that key the group are `火花` (sparks), `石
 curves at exactly 0 in 87 % and 77 % of cases against 12 % for channel 8 --
 the two horizontal components are the ones friction stops.
 
+Session 13 also settles the **third** `A x 4` table (file header `+0x40`),
+which session 8 filed as unknown: it is a second per-emitter mask, one bit per
+group, and a set bit makes the update skip that group's per-frame block
+entirely. `--tab40` shows the pairing and the check that says what the bit
+means: across 8,637 emitters, 38,105 set bits, **none** co-occurs with its
+`tab28` partner, and where the group has a rate field that rate is **0.0 in
+100 % of cases** against 3-68 % otherwise. So the bit does not mean "freeze" --
+it means the group is inert, and the table is a work-skipping mask.
+
 Usage:
     python eff_channels.py --map        # the channel map and struct offsets
     python eff_channels.py --physics    # the bounce/friction/roll block
+    python eff_channels.py --tab40      # the third A x 4 table: inert groups
     python eff_channels.py --proof      # bitmask <-> keyed groups, all files
     python eff_channels.py --profile    # per-channel shape + co-occurrence
     python eff_channels.py --statics    # the static/rate fields main.dol names
@@ -110,6 +120,35 @@ PHYSICS = [
     (0x254, "roll gain", "multiplies the rolling angle s/r", "802322fc"),
     (0x258, "floor Y", "the plane the test is against", "8023205c"),
 ]
+
+
+# The THIRD A x 4 table, at file header +0x40 (`tab40`). Session 8 filed it as
+# unknown; session 13 found it read in FUN_8023193c as a second mask, one bit
+# per group, tested *around* the tab28 test:
+#
+#     if (tab40 == NULL || (tab40[e] & bit) != bit) {      <- skip everything
+#         if (tab28[e] & bit28) { evaluate the curve }
+#         else                  { integrate the rate }
+#     }
+#
+# tab40 numbers the groups its own way: colour costs tab28 two bits and only
+# one here, and channels 10,11 -- which have neither a static nor a rate --
+# get no bit at all, because they have no per-frame work to skip.
+# (tab40 bit, tab28 mask, rate field, label, tested in the DOL)
+TAB40 = [
+    (0x01, 0x001, None, "12,13,14 displacement", False),
+    (0x02, 0x002, None, "15,16,17 rotation", True),
+    (0x04, 0x004, 0x134, "0,1,2 scale", True),
+    (0x08, 0x008, None, "7,8,9 velocity", True),
+    (0x10, 0x030, 0x1b4, "3,4,5,6 colour", True),
+    (0x20, 0x040, 0x1ec, "18", True),
+    (0x40, 0x080, 0x210, "19,20,21 spin", True),
+]
+
+
+def _f32(params, record_off):
+    """A float of the 620-byte emitter record, by its record offset."""
+    return struct.unpack_from("<f", params, record_off - 64)[0]
 
 
 def _emitters():
@@ -303,6 +342,51 @@ def physics():
           "default is exactly 1.0 are what those things are.")
 
 
+def tab40():
+    """The third A x 4 table: which groups are inert.
+
+    Two readings fit the code equally well -- the bit could mean "freeze this
+    group at its birth value" or "this group has no per-frame work at all".
+    They differ in a checkable way: only the second requires the group's RATE
+    field to be zero, and nothing in the format ties the table to those floats.
+    """
+    rows = []
+    for _, _, em in _emitters():
+        rows.append((em["tab28"], em["tab40"], em["params"]))
+    n = len(rows)
+    print(f"{n:,} emitters")
+    print(f"{'tab40':>6} {'group':<24}{'set':>8}{'also keyed':>12}"
+          f"{'rate==0':>10}{'(both clear) rate==0':>22}  in DOL")
+    print("-" * 92)
+    tset = tboth = tz = tzn = 0
+    for b40, b28, rate, lab, tested in TAB40:
+        on = [r for r in rows if r[1] & b40]
+        both = sum(1 for r in on if r[0] & b28)
+        tset += len(on)
+        tboth += both
+        if rate is None:
+            print(f"{b40:>#6x} {lab:<24}{len(on):>8,}{both:>12}{'-':>10}"
+                  f"{'-':>22}  {'yes' if tested else 'NO'}")
+            continue
+        z = sum(1 for r in on if _f32(r[2], rate) == 0.0)
+        clear = [r for r in rows if not (r[1] & b40) and not (r[0] & b28)]
+        zc = sum(1 for r in clear if _f32(r[2], rate) == 0.0)
+        tz += z
+        tzn += len(on)
+        print(f"{b40:>#6x} {lab:<24}{len(on):>8,}{both:>12}{z / len(on):>10.1%}"
+              f"{zc / len(clear):>22.1%}  {'yes' if tested else 'NO'}")
+    print("-" * 92)
+    print(f"{'TOTAL':>6} {'':<24}{tset:>8,}{tboth:>12}{tz / tzn:>10.1%}")
+    out = sum(1 for r in rows if r[1] & ~0x7F)
+    print(f"\nemitters setting a tab40 bit outside 0x7f: {out} of {n:,}")
+    print(f"a set tab40 bit co-occurring with its tab28 bit: {tboth} of "
+          f"{tset:,}\n")
+    print("So the bit does not mean freeze -- it means the group is inert, and")
+    print("the table is a per-frame work-skipping mask the authoring tool sets")
+    print("when the group would have been a no-op. Note the first bit: the")
+    print("authoring tool writes it, and no code in main.dol ever reads it.")
+
+
 def main():
     sys.stdout = __import__("io").TextIOWrapper(
         sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -317,6 +401,8 @@ def main():
         statics()
     elif a[0] == "--physics":
         physics()
+    elif a[0] == "--tab40":
+        tab40()
     else:
         print(__doc__)
 

@@ -177,6 +177,7 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `parse_efp.py` | `.efp` effect sequencer + `.effconfig` presets; bone-attachment cross-check |
 | `parse_eff.py` | `.eff` particle binary: emitters, materials, lifetime-keyed curves |
 | `eff_channels.py` | What the 22 curve channels drive, read out of `main.dol`; `--proof` re-runs the 77,733-check against the data, `--physics` the bounce/friction/roll block |
+| `eff_channels.py --tab40` | The third `A × 4` table: which channel groups are inert, 38,105/38,105 |
 | `field_xref.py` | Who reads offset N of a struct: recovered struct usages over the whole text, plus the small-data float pool (`--consts`) |
 | `rso_parse.py`, `rso_reloc.py`, `elfhash_search.py` | RSO/`.sel` module parsing & symbol hashing |
 | `ghidra_scripts/` | Java Ghidra scripts: DOL loader, reports, decompile |
