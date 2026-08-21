@@ -79,6 +79,11 @@ stops:
 - **What channels 18 and 10–11 drive.** Still open, and now known to be out of
   reach of the same technique: both are written by the update and read by
   nothing whose base can be resolved.
+- ~~**Where the effect colour is divided by 255.**~~ — **answered: nowhere.**
+  The engine holds colour as a float and multiplies by 255 with `fctiwz` when it
+  writes the vertex, in the effect module's draw function (found by asking which
+  functions write the GX FIFO). The only two uses of 1/255 in that module are an
+  invisible-particle threshold. See [20](docs/20-eff-channels.md).
 - **`.gmk` `TRIGGER` types 2–6** and the `PATH_POINT` opcode: seen, counted, not
   interpreted.
 - **The `.hocb` `0x003` tail.** Present in every file, parsed as bytes, unread.

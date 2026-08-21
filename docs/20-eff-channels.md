@@ -352,8 +352,56 @@ is more general than this engine.
 - **`tab30`, the table at header `+0x30`.** Value 1 in all 8,637 records and
   read by no code in `main.dol`. It carries no information, so there is nothing
   to recover; recorded here so nobody spends a session on it.
-- **The colour normalisation point.** Narrowed: `--const 0.003921569` finds the
-  20 functions in `main.dol` that load 1/255, and exactly two are in the effect
-  module (`FUN_80228ca0`, `FUN_8023193c`). Not yet pinned to an instruction.
+- **The colour authoring scale.** The `/255` question is answered, and the
+  answer is that it does not exist — see below. What is left is narrower and
+  sharper: the authored statics are on 0–255 (99.2 % of them) and the runtime
+  clamps the particle colour to `[0,1]` for 99.5 % of emitters, so on the
+  evidence the clamp simply **saturates**. How the two scales are meant to be
+  reconciled is unexplained; the mechanism one would expect has been ruled out.
 - **The two rotation groups** (15,16,17 and 19,20,21) are both angles in
   degrees; which is the billboard and which the texture is not established.
+
+## There is no `/255`: the conversion runs the other way
+
+Session 10 left "where does the `/255` happen" open. It does not happen. The
+engine holds colour as a float and multiplies by 255 when it writes the vertex.
+
+`--const 0.003921569` finds every function in `main.dol` that loads 1/255:
+**20**, of which two are in the effect module, and neither divides by anything.
+At `0x802319b8` the constant is a **threshold**, not a divisor:
+
+```
+lfs   f3, -0x549c(r2)     ; 1/255
+lfs   f0, 0xc8(r5)        ; particle alpha
+fcmpo f0, f3              ; ... and then 0xbc, 0xc0, 0xc4 the same way
+li    r3, 1 ; return      ; below one 8-bit level -> drop the particle
+```
+
+One 8-bit level is the smallest visible value, so this is an invisible-particle
+early-out — and it is also a second, independent statement that the particle's
+colour is on `[0,1]` by the time the update runs.
+
+The conversion itself is in the effect module's **draw** function. `FUN_80235bf8`
+was found by a different question entirely — which functions write the GX FIFO
+at `0xCC008000`; there are 95 in the binary and exactly two in this module — and
+it keeps 255.0 in a callee-saved FPR as a loop invariant:
+
+```
+lfs   f0, 0x1c(r16)     ; four consecutive floats: R G B A
+lfs   f2, 0x20(r16)
+lfs   f1, 0x24(r16)
+lfs   f0, 0x28(r16)
+fmuls f3, f27, f0       ; f27 = 255.0
+fmuls f2, f27, f2
+fmuls f1, f27, f1
+fmuls f0, f27, f0
+fctiwz x4 ; stfd/lwz x4 ; the PowerPC float-to-int idiom
+```
+
+at `0x80236084` and again at `0x80236524` — two draw paths. The base is
+`r16+0x1c`, a per-draw-item struct rather than the particle, which is also why
+the field cross reference finds no particle reads in the draw function at all.
+
+The search was exhaustive in both addressing modes: the small-data pool is
+covered by `--const`, and the binary loads only **108** distinct float constants
+from absolute addresses, none of them 255 or 1/255.
