@@ -475,6 +475,58 @@ height  5:1   7:3   8:6   10:114   11:90   14:6   23:3
 hand-placed on the floor, that some systems must ignore: there is no other thing
 that is.
 
+### Bit 9 is scoped to the map, not to the surface — and the `_bird` twin says so
+
+Bit 9 is the bulk of the traffic, 48,806 triangles, and it behaves unlike the
+rest: it is used **alone** on 87.6 % of them, and where it appears at all it
+covers a median 59.9 % of the file (p75 94.1 %). That is a property of the map,
+not of a surface.
+
+Every map ships a second collision file with a `_bird` suffix, and the two
+disagree about bit 9 sharply:
+
+| | mean bit-9 coverage |
+|---|---|
+| plain `.hocb` (246 files) | 34.5 % |
+| `_bird.hocb` (105 files) | **2.2 %** |
+
+Triangle for triangle across every bird/plain pair, a bit-9 triangle survives
+into the bird collision **4.6 %** of the time against **29.0 %** for everything
+else — a 6.3× difference over 84,033 triangles. And 59 of the 63 maps where bit
+9 covers more than 90 % of the collision are towns (`tw*`), which are exactly the
+maps full of small ground-level clutter.
+
+So bit 9 marks ground-level detail, and whatever system the `_bird` files serve
+is the one that sets it. Naming that system is the open half of this.
+
+### The wall bits are one near-nested ladder, not five categories
+
+Over bits 1, 2, 3, 4 and 8 only **13** distinct values occur in 413,390
+triangles, and five nested ones — `0x10` ⊂ `0x12` ⊂ `0x16` ⊂ `0x1e` ⊂ `0x11e` —
+cover **96.3 %** of them:
+
+| mask | bits | tris | files | median area | panel height | up-facing |
+|---|---|---|---|---|---|---|
+| `0x010` | 4 | 916 | 29 | 35.7 | 7.00 | 19.4 % |
+| `0x012` | 1, 4 | 3880 | 3 | 61.3 | 13.04 | 3.0 % |
+| `0x016` | 1, 2, 4 | 1836 | 38 | 48.5 | 10.00 | 14.8 % |
+| `0x01e` | 1, 2, 3, 4 | 3372 | 36 | 721.7 | 120.00 | 9.3 % |
+| `0x11e` | 1, 2, 3, 4, 8 | 6286 | 49 | 1114.8 | 100.00 | 0.3 % |
+
+In nesting order the heights read 7.00, 13.04, 10.00, 120.00, 100.00. That is
+**not** monotone — two adjacent rungs invert — but it is not flat either: there
+is an order-of-magnitude **step** between the third rung and the fourth. The low
+three are character-scale blockers of 7 to 13 units, the same scale as the
+bit-18 invisible walls; the top two are full-height walls with 15–20× the
+triangle area and, at `0x11e`, 0.3 % up-facing, i.e. pure vertical.
+
+The ladder therefore separates two regimes cleanly and orders badly within a
+regime — what one expects if the bits are categories that authors applied in a
+near-nested way, rather than a level number. Two caveats belong on the page: the
+field is not a chain in general (554 incomparable pairs across all 42 distinct
+masks), and `0x12`'s 3,880 triangles come from only **three** files and are 98 %
+sand, so that rung is one location rather than a category.
+
 ### One anchor from the code, after all
 
 The three `ef_col##n.hcb` files are not scenery. `FUN_80256384` reads
@@ -489,13 +541,15 @@ rather than a property of the triangle.
 
 ## What is still open
 
-- The names of the remaining exclusion-mask bits. **11, 16 and 18 are settled
-  above**, and 5 and 6 travel with 11. Still open: **9**, which is the bulk of
-  the traffic (48,806 triangles, mostly surface id 0 and stone paving) and looks
-  like a default rather than a category; **1, 2, 3, 4 and 8**, five wall-shaped
-  bits that need separating from one another; **7** (2,016 triangles, 21× water
-  lift, so water-adjacent); and **17**, which appears in exactly two dungeon
-  maps at 96 triangles each, half surface id 0 and half sand.
+- The names of the remaining exclusion-mask bits. **11, 16 and 18 are settled**
+  above, 5 and 6 travel with 11, **9** is characterised (ground-level detail,
+  map-scoped, tied to the `_bird` files) without its consumer being named, and
+  **1, 2, 3, 4, 8** are shown to be one near-nested ladder over two size
+  regimes rather than five independent categories. Genuinely untouched: **7**
+  (2,016 triangles, 21× water lift, so water-adjacent) and **17**, which occurs
+  in exactly two dungeon maps at 96 triangles each, half surface id 0 and half
+  sand — and the two occurrences are *not* the same object (0 triangles in
+  common after translation) although both span exactly 199.2 units in x.
 - Three grep-shaped routes to the *code* were ruled out here, and a fourth — an
   abstract interpreter over every indirect call site — ruled out a whole region
   of the search space; see [21 — Resolving the indirect
