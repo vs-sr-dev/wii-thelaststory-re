@@ -71,6 +71,11 @@ from dol_classes import Dol, find_records  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FUNCS = os.path.join(ROOT, "ghidra_out_gekko", "functions.txt")
 
+MEMOP = {32: "lwz", 34: "lbz", 40: "lhz", 42: "lha", 33: "lwzu", 35: "lbzu",
+         41: "lhzu", 48: "lfs", 49: "lfsu", 50: "lfd", 51: "lfdu",
+         52: "stfs", 53: "stfsu", 54: "stfd", 55: "stfdu", 36: "stw",
+         56: "psq_l", 57: "psq_lu", 60: "psq_st", 61: "psq_stu"}
+
 BCTRL = 0x4E800421
 BCTR = 0x4E800420
 BLR = 0x4E800020
@@ -172,8 +177,62 @@ def transparent_calls(dol, sym):
     return {a for a, n in sym.funcs if n <= 0x100 and not writes_r3(dol, a, n)}
 
 
+def volatile_writes(dol, start, size):
+    """Which volatile registers a leaf function writes, or None if unknowable.
+
+    `writes_r3` asks this question about one register because resolving a
+    virtual call only needs the receiver. Every *other* argument is lost, and
+    for a five-argument function that is most of what there is: CodeWarrior
+    opens such a function with `bl __save_gpr`, which touches only r11 and the
+    callee-saved bank, yet a model that drops all volatiles at every `bl` wipes
+    r4-r10 there -- before a single one of them has been used. The registers
+    come back as `?` and the function looks like it reads nothing at all.
+    """
+    seen = set()
+    for off in range(0, size, 4):
+        w = dol.w(start + off)
+        if w is None:
+            return None
+        op = w >> 26
+        if op == 18 and w & 1:
+            return None
+        if w in (BCTRL, 0x4C000021):
+            return None
+        dest = None
+        if op in (14, 15, 32, 34, 40, 42, 33, 35, 41, 7, 8, 12, 13):
+            dest = (w >> 21) & 31
+        elif op in (24, 25, 26, 27, 28, 29, 20, 21, 23):
+            dest = (w >> 16) & 31
+        elif op == 31:
+            xo = (w >> 1) & 0x3FF
+            if xo in (444, 28, 316, 24, 536, 792, 824, 124, 476, 412):
+                dest = (w >> 16) & 31
+            elif xo not in (0, 32, 4, 467, 151, 215, 407, 662, 918):
+                dest = (w >> 21) & 31
+        if dest in VOLATILE:
+            seen.add(dest)
+    return frozenset(seen)
+
+
+def transparent_regs(dol, sym, limit=0x100):
+    """target -> the volatile registers a call to it leaves alone.
+
+    Only the prologue/epilogue helpers and a few tiny leaves qualify, but those
+    are the calls that stand between a function's entry and its first real use
+    of its own arguments, so they are the ones that matter.
+    """
+    out = {}
+    for a, n in sym.funcs:
+        if n > limit:
+            continue
+        w = volatile_writes(dol, a, n)
+        if w is not None and len(w) < len(VOLATILE):
+            out[a] = frozenset(VOLATILE) - w
+    return out
+
+
 def interpret(dol, start, end, on_store=None, on_call=None, track=None,
-              keeps_r3=()):
+              keeps_r3=(), on_mem=None, preserved=None):
     """Walk [start,end) keeping a symbolic value per GPR.
 
     Straight-line: the whole function body is swept in address order rather
@@ -219,15 +278,45 @@ def interpret(dol, start, end, on_store=None, on_call=None, track=None,
             regs[ra] = ("c", regs[rs][1] | v) if regs[rs][0] == "c" else U
         elif op == 32:                                   # lwz
             sl = slot(ra, d) if ra else None
+            if on_mem is not None and sl is None:
+                on_mem(pc, "lwz", regs[ra] if ra else ("c", 0), d, None, rs)
             if sl is not None and sl in stack:
                 regs[rs] = stack[sl]
             else:
                 regs[rs] = load(regs[ra], d) if ra else ("c", d & 0xFFFFFFFF)
         elif op in (34, 40, 42, 33, 35, 41):             # other integer loads
+            if on_mem is not None and (not ra or slot(ra, d) is None):
+                on_mem(pc, MEMOP[op], regs[ra] if ra else ("c", 0), d, None, rs)
             regs[rs] = U
+        elif op in (56, 57, 60, 61):                     # psq_l/psq_st (Gekko)
+            # The paired-single forms carry a *12-bit* displacement -- the top
+            # four bits are the GQR index and the W flag -- so decoding them
+            # with the usual 16-bit `d` gives a nonsense offset. They are also
+            # exactly the instructions the effect and animation code is written
+            # in, which is why leaving them out makes the interesting functions
+            # look like they touch nothing.
+            pd = w & 0xFFF
+            if pd & 0x800:
+                pd -= 0x1000
+            if on_mem is not None and (not ra or slot(ra, pd) is None):
+                on_mem(pc, MEMOP[op], regs[ra] if ra else ("c", 0), pd, None,
+                       rs)
+            if op in (57, 61) and ra:                    # update forms
+                regs[ra] = add(regs[ra], pd)
+        elif op in (48, 49, 50, 51, 52, 53, 54, 55):     # float load/store
+            # The FPRs are not modelled -- but the *address* is, and that is
+            # the whole question here: every geometric field of every struct in
+            # this engine is a float, so a tool that only watches the GPR loads
+            # is blind to exactly the fields worth chasing.
+            if on_mem is not None and (not ra or slot(ra, d) is None):
+                on_mem(pc, MEMOP[op], regs[ra] if ra else ("c", 0), d, None, rs)
+            if op in (49, 51, 53, 55) and ra:            # update forms
+                regs[ra] = add(regs[ra], d)
         elif op == 36:                                   # stw
             if on_store is not None:
                 on_store(pc, regs[rs], regs[ra] if ra else ("c", 0), d)
+            if on_mem is not None and (not ra or slot(ra, d) is None):
+                on_mem(pc, "stw", regs[ra] if ra else ("c", 0), d, regs[rs], rs)
             sl = slot(ra, d) if ra else None
             if sl is not None:
                 stack[sl] = regs[rs]
@@ -264,17 +353,20 @@ def interpret(dol, start, end, on_store=None, on_call=None, track=None,
                 li = w & 0x03FFFFFC
                 if li & 0x02000000:
                     li -= 0x04000000
-                for r in VOLATILE:
-                    regs[r] = U
                 arg3 = regs[3]
                 tgt = (li if (w & 2) else pc + li) & 0xFFFFFFFF
+                keep = preserved.get(tgt) if preserved else None
+                held = {r: regs[r] for r in keep} if keep else None
                 for r in VOLATILE:
                     regs[r] = U
+                if held:
+                    regs.update(held)
                 # tagged with the call site: two `operator new` results in one
                 # function are different objects, and a factory that news up
                 # sixty classes in a row would otherwise merge them all.
-                regs[3] = (arg3 if tgt in keeps_r3
-                           else ("ret", tgt, arg3, pc))
+                if not (keep and 3 in keep):
+                    regs[3] = (arg3 if tgt in keeps_r3
+                               else ("ret", tgt, arg3, pc))
             else:
                 crossed += 1                             # falls into a join
                 for r in VOLATILE:

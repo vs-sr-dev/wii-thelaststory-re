@@ -111,6 +111,15 @@ indirect call sites         : 6505
   resolved, total           : 827   (12.7 % of all indirect calls)
 ```
 
+> **Improved in [22](22-field-xref.md).** Building the field cross reference on
+> top of `interpret()` exposed a defect in it: every argument except `this` was
+> being wiped by the `bl __save_gpr` in the prologue, before the function had
+> used a single one of them. Preserving the volatile registers a leaf call
+> demonstrably does not write moves these figures to **5,401** functions given a
+> class, **5,218** sites with a vtable shape, **625** named by class and **883**
+> resolved (13.6 %). The numbers in this block are the session-12 measurement and
+> are kept as written.
+
 Of the 569 named by class, 567 are calls on `this`, and the handful that are not
 come from typed globals and members. That ratio is the honest summary of where
 this technique's reach ends.

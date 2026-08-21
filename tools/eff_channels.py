@@ -26,7 +26,7 @@ that field's companion RATE. Nine bits cover all 22 channels:
     bit 0 (0x001)  ch 12,13,14   emitter displacement over time
     bit 1 (0x002)  ch 15,16,17   rotation, degrees
     bit 2 (0x004)  ch 0,1,2      scale
-    bit 3 (0x008)  ch 7,8,9      (world-space vector, unnamed)
+    bit 3 (0x008)  ch 7,8,9      the particle's VELOCITY, world space
     bits 4,5       ch 3,4,5 + 6  colour: popcount 1 -> alpha only,
                                  popcount 2 -> rgb as well
     bit 6 (0x040)  ch 18         (world-space scalar, unnamed)
@@ -44,8 +44,22 @@ the static default the engine falls back to for channel 6 has median exactly
 1.0 (scale factors). `--profile` adds the shape of each channel and the
 co-occurrence matrix, which is block-diagonal on exactly these groups.
 
+SESSION 13 names group {7,8,9}: it is the particle's **velocity**. The update
+integrates the position by it (`pos.y += dt * p[0x9c]`, at 0x80231c8c), then
+subtracts gravity from the y component, tests the result against a floor plane,
+and on contact multiplies the velocity by a negated restitution, applies a
+friction term to x and z with a clamp that stops friction from reversing them,
+and accumulates a rolling angle s/r about `cross(velocity, down)`. Every one of
+those constants is a field in the tail of the emitter record; `--physics` shows
+them and checks them against the shipped data. Two independent supports come
+from the data alone: the emitters that key the group are `火花` (sparks), `石`
+(stones), `土煙` (dust) at 5x the base rate, and channels 7 and 9 end their
+curves at exactly 0 in 87 % and 77 % of cases against 12 % for channel 8 --
+the two horizontal components are the ones friction stops.
+
 Usage:
     python eff_channels.py --map        # the channel map and struct offsets
+    python eff_channels.py --physics    # the bounce/friction/roll block
     python eff_channels.py --proof      # bitmask <-> keyed groups, all files
     python eff_channels.py --profile    # per-channel shape + co-occurrence
     python eff_channels.py --statics    # the static/rate fields main.dol names
@@ -76,11 +90,25 @@ GROUPS = [
     ((12, 13, 14), "emitter displacement (x,y,z)", None, 0x0a4, None),
     ((15, 16, 17), "rotation, degrees (x,y,z)", 0x0a4, 0x0e0, None),
     ((0, 1, 2), "scale (x,y,z), x world-scaled", 0x0b0, 0x11c, 0x134),
-    ((7, 8, 9), "world-space vector, unnamed", 0x098, 0x158, None),
+    ((7, 8, 9), "VELOCITY (x,y,z), world space", 0x098, 0x158, None),
     ((3, 4, 5, 6), "colour R,G,B,A (0-255)", 0x0bc, 0x194, 0x1b4),
     ((18,), "world-space scalar, unnamed", 0x0cc, 0x1e4, 0x1ec),
     ((19, 20, 21), "rotation with spin rate, degrees", 0x0d0, 0x1f8, 0x210),
     ((10, 11), "pair, no static fallback", 0x0dc, None, None),
+]
+
+
+# The bounce/friction/roll block at the tail of the emitter record, read out of
+# FUN_8023193c (see docs/20-eff-channels.md). Offsets are into the 620-byte
+# record; the addresses are where main.dol loads each one.
+PHYSICS = [
+    (0x240, "enable", "gates the whole block", "80232004"),
+    (0x244, "gravity", "subtracted from vy each frame, x dt x scale", "80232048"),
+    (0x248, "radius", "particle rests this far above the floor", "80232028"),
+    (0x24c, "restitution", "velocity is multiplied by -this on contact", "8023208c"),
+    (0x250, "friction", "scales vx and vz, with a sign-flip clamp", "80232198"),
+    (0x254, "roll gain", "multiplies the rolling angle s/r", "802322fc"),
+    (0x258, "floor Y", "the plane the test is against", "8023205c"),
 ]
 
 
@@ -230,6 +258,51 @@ def statics():
           "(scale factors). Neither is forced by the format.")
 
 
+def physics():
+    """The physics block, and the check that names its fields from the data.
+
+    Reading the code gives seven candidate fields. The test that they are what
+    they look like is not that the values are plausible -- almost anything is
+    plausible for a float -- but that they behave like the fields of a dialog
+    box whose checkbox is off: when `enable` is 0 nobody edits them, so they
+    should collapse onto a single authoring default, and when it is 1 they
+    should spread out. That is a property of the *authoring*, and nothing in
+    the file format produces it.
+    """
+    rows = []
+    for _, _, em in _emitters():
+        pr = em["params"]                     # from record offset 0x40
+        vals = {}
+        for off, _, _, _ in PHYSICS:
+            i = off - 64
+            vals[off] = (struct.unpack_from("<f", pr, i)[0],
+                         struct.unpack_from("<I", pr, i)[0])
+        rows.append(vals)
+    n = len(rows)
+    flag = [r[0x240][1] for r in rows]
+    on = [r for r, f in zip(rows, flag) if f]
+    off = [r for r, f in zip(rows, flag) if not f]
+    print(f"{n:,} emitters\n")
+    print("the enable flag is a flag: distinct u32 values at +0x240 ->",
+          dict(collections.Counter(flag).most_common()))
+    print(f"  enable = 1 : {len(on):,}    enable = 0 : {len(off):,}\n")
+    print(f"{'off':>6} {'field':<12}{'distinct':>9}{'min':>10}{'max':>10}"
+          f"  default when off (share)      spread when on")
+    print("-" * 104)
+    for o, lab, _, _ in PHYSICS[1:]:
+        v = [r[o][0] for r in rows]
+        c_off = collections.Counter(r[o][0] for r in off)
+        c_on = collections.Counter(r[o][0] for r in on)
+        d, k = c_off.most_common(1)[0]
+        top = " ".join(f"{x:g}x{m}" for x, m in c_on.most_common(4))
+        print(f"{o:#06x} {lab:<12}{len(set(v)):>9}{min(v):>10.4g}{max(v):>10.4g}"
+              f"  {d:<8g} {k / len(off):>6.1%}   {top}")
+    print("\nWith the checkbox off every field sits on one value; with it on the "
+          "same field\nfans out. A default restitution of 0.7, a default "
+          "friction of 0.1, a default radius\nof 0.5 and a roll gain whose "
+          "default is exactly 1.0 are what those things are.")
+
+
 def main():
     sys.stdout = __import__("io").TextIOWrapper(
         sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -242,6 +315,8 @@ def main():
         profile()
     elif a[0] == "--statics":
         statics()
+    elif a[0] == "--physics":
+        physics()
     else:
         print(__doc__)
 

@@ -67,9 +67,18 @@ stops:
   channels resolve into 8 groups selected by a 9-bit mask — colour RGBA, scale,
   two rotations, emitter displacement, and three groups still unnamed. Verified
   **77,733 / 77,733** against the data. See [20](docs/20-eff-channels.md).
-- **What channels 7–9, 18 and 10–11 actually drive.** Their *structure* is
-  settled (world-space vector, world-space scalar, and a pair with no static
-  fallback); their names are not. This needs the draw path, not the update path.
+- ~~**What channels 7–9 actually drive.**~~ — **answered: the particle's
+  velocity.** A field-level cross reference ([22](docs/22-field-xref.md)) found
+  the readers of `particle+0x98`, and the update integrates the position by it,
+  then applies gravity, a floor test, a bounce, friction and a rolling angle
+  `s/r` — seven fields at the tail of the emitter record whose authoring
+  defaults name them (restitution 0.7, friction 0.1, roll gain exactly 1.0).
+  Backed from the data alone by the emitters that key it (`火花` sparks, `石`
+  stones, `土煙` dust, ~5× the base rate) and by which component decays.
+  See [20](docs/20-eff-channels.md).
+- **What channels 18 and 10–11 drive.** Still open, and now known to be out of
+  reach of the same technique: both are written by the update and read by
+  nothing whose base can be resolved.
 - **`.gmk` `TRIGGER` types 2–6** and the `PATH_POINT` opcode: seen, counted, not
   interpreted.
 - **The `.hocb` `0x003` tail.** Present in every file, parsed as bytes, unread.
@@ -87,8 +96,11 @@ far better place to look than it was: it still carries its **C++ class names**
 Ghidra reads **97.6 %** of its code instead of 44 %
 ([19](docs/19-gekko-sleigh.md)). Its C++ *indirect* calls are now readable too:
 an abstract interpreter recovers the object and the slot at each virtual call
-site, which gives 5,147 of its functions a class and a member layout for the
-classes that own one ([21](docs/21-indirect-calls.md)).
+site, which gives thousands of its functions a class and a member layout for the
+classes that own one ([21](docs/21-indirect-calls.md)). The same interpreter now
+also answers *who reads offset N of a struct* — the question a decompiler cannot
+ask, because a struct member is not something the binary records
+([22](docs/22-field-xref.md)).
 
 ## Documentation
 
@@ -115,6 +127,7 @@ classes that own one ([21](docs/21-indirect-calls.md)).
 | [19 — A Gekko SLEIGH for Ghidra](docs/19-gekko-sleigh.md) | Teaching Ghidra the Wii's paired-single instructions: 44 % → 97.6 % of the text, with the before/after measurement |
 | [20 — The 22 `.eff` channels](docs/20-eff-channels.md) | The curve evaluator, the group bitmask at `+0x28`, and the 77,733/77,733 check that proves the map |
 | [21 — Resolving the indirect calls](docs/21-indirect-calls.md) | Reading the register file instead of grepping bytes: virtual call sites, recovered object layouts, 5,147 functions given a class |
+| [22 — Who reads offset N of a struct?](docs/22-field-xref.md) | The field-level cross reference: recovered struct usages, the small-data float pool, and the two interpreter defects it exposed |
 
 ## Tools
 
@@ -163,7 +176,8 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `dol_disasm.py` | Gekko-tolerant partial disassembler, plus `--coverage`: measures how much of the DOL Ghidra silently misses |
 | `parse_efp.py` | `.efp` effect sequencer + `.effconfig` presets; bone-attachment cross-check |
 | `parse_eff.py` | `.eff` particle binary: emitters, materials, lifetime-keyed curves |
-| `eff_channels.py` | What the 22 curve channels drive, read out of `main.dol`; `--proof` re-runs the 77,733-check against the data |
+| `eff_channels.py` | What the 22 curve channels drive, read out of `main.dol`; `--proof` re-runs the 77,733-check against the data, `--physics` the bounce/friction/roll block |
+| `field_xref.py` | Who reads offset N of a struct: recovered struct usages over the whole text, plus the small-data float pool (`--consts`) |
 | `rso_parse.py`, `rso_reloc.py`, `elfhash_search.py` | RSO/`.sel` module parsing & symbol hashing |
 | `ghidra_scripts/` | Java Ghidra scripts: DOL loader, reports, decompile |
 
