@@ -50,6 +50,7 @@ Usage:
     python vcall_scan.py --vptr                 # constructors: class @ this+off
     python vcall_scan.py --vcalls               # every virtual call site
     python vcall_scan.py --layout gmk::Trap     # recovered member layout
+    python vcall_scan.py --fields               # pointer members, incl. polymorphic
     python vcall_scan.py --resolve              # join the two, name the callee
     python vcall_scan.py --callers ColliTree    # who calls a class's methods
     python vcall_scan.py --slot 0x0c,0x10,0x14 --args 7,8
@@ -269,7 +270,11 @@ def interpret(dol, start, end, on_store=None, on_call=None, track=None,
                 tgt = (li if (w & 2) else pc + li) & 0xFFFFFFFF
                 for r in VOLATILE:
                     regs[r] = U
-                regs[3] = arg3 if tgt in keeps_r3 else ("ret", tgt, arg3)
+                # tagged with the call site: two `operator new` results in one
+                # function are different objects, and a factory that news up
+                # sixty classes in a row would otherwise merge them all.
+                regs[3] = (arg3 if tgt in keeps_r3
+                           else ("ret", tgt, arg3, pc))
             else:
                 crossed += 1                             # falls into a join
                 for r in VOLATILE:
@@ -281,7 +286,7 @@ def interpret(dol, start, end, on_store=None, on_call=None, track=None,
                             crossed)
                 for r in VOLATILE:
                     regs[r] = U
-                regs[3] = ("ret", None, U)
+                regs[3] = ("ret", None, U, pc)
                 if w == BCTR:
                     crossed += 1
             else:                                        # blr, bclr, bcctr
@@ -428,6 +433,21 @@ def scan_calls(dol, sym, keeps_r3=None):
 # --------------------------------------------------------------------------
 # step 3 -- give the objects a type
 # --------------------------------------------------------------------------
+def _sole(counts, least=2):
+    """The one type a field was seen holding -- if it was seen more than once.
+
+    A field observed a single time is not evidence that it is monomorphic: the
+    character state pointer shows up under two different owner names, and in one
+    of them only one assignment happens to be visible. Requiring two agreeing
+    observations costs eight resolutions and removes that whole class of
+    confident wrong answer.
+    """
+    if not counts or len(counts) != 1:
+        return None
+    t, n = next(iter(counts.items()))
+    return t if n >= least else None
+
+
 class Types:
     """Which class does a function belong to, and what does it hold where.
 
@@ -440,10 +460,19 @@ class Types:
     * a `bl` to a known constructor of Y with `r3 = this+OFF` says the same
       thing for the members whose constructor was too big to inline.
 
-    Method-to-class comes from the vtables, then propagates once through direct
-    calls that forward `this` unchanged: `bl f` with `r3 = r3` inside a method
-    of X makes f a method of X too. One round only -- it is a lead, and each
-    extra round multiplies the chance of carrying a wrong name along.
+    Method-to-class comes from the vtables, then propagates through direct calls
+    that forward `this` unchanged: `bl f` with `r3 = r3` inside a method of X
+    means r3 is an X inside f too. Propagation runs to a fixpoint but **drops
+    any function two different classes reach** -- 96 of them, which a
+    first-writer-wins rule would have silently named after whichever came first.
+
+    A fourth source types POINTER members: a constructor returns `this`, so a
+    store of `bl Y::ctor`'s return value into `this+OFF` says that field holds a
+    Y. Field types are collected as SETS, never as a single answer, because the
+    interesting ones are polymorphic -- the character state pointer at `+0xf80`
+    takes at least eleven different `chr::Control*` classes, and calling it any
+    one of them would be a hundred confident wrong answers. Only fields with a
+    single observed type are used for resolution; `--fields` prints both.
     """
 
     def __init__(self, dol, sym, sites):
@@ -487,23 +516,78 @@ class Types:
             e = s.args[3]
             if owner and sub and e[0] == "add" and e[1] == ("in", 3):
                 self.layout[owner].setdefault(e[2], sub)
-        for s in sites:                                         # one propagation
-            if s.kind == "bl" and s.args[3] == ("in", 3):
-                owner = self.of_fn.get(s.fn)
-                if owner:
-                    self.of_fn.setdefault(s.ctr[1], owner)
+        # propagate `this` to a fixpoint, dropping every conflict
+        seeds = set(self.of_fn)
+        edges = [(s.fn, s.ctr[1]) for s in sites
+                 if s.kind == "bl" and s.args[3] == ("in", 3)]
+        self.ambiguous = set()
+        while True:
+            added = 0
+            for a, b in edges:
+                if a not in self.of_fn or b in seeds or b in self.ambiguous:
+                    continue
+                t = self.of_fn[a]
+                if b in self.of_fn:
+                    if self.of_fn[b] != t:
+                        self.ambiguous.add(b)
+                        del self.of_fn[b]
+                else:
+                    self.of_fn[b] = t
+                    added += 1
+            if not added:
+                break
+
+        # pointer members: what gets stored into this+OFF, as a set of types
+        self.fields = collections.defaultdict(
+            lambda: collections.defaultdict(collections.Counter))
+        self.globals = collections.defaultdict(collections.Counter)
+        built = collections.defaultdict(dict)
+        for s in sites:
+            if s.kind == "bl":
+                sub = ctor_class.get(s.ctr[1])
+                if sub and s.args[3][0] != "u":
+                    built[s.fn][s.args[3]] = sub
+        keeps = transparent_calls(dol, sym)
+        for start, size in sym.funcs:
+            owner = self.of_fn.get(start)
+            here = built.get(start)
+            if not owner and not here:
+                continue
+
+            def on_store(pc, val, base, off, _o=owner, _h=here):
+                t = None
+                if val[0] == "ret" and val[1] in ctor_class:
+                    t = ctor_class[val[1]]        # a constructor returns `this`
+                elif _h:
+                    t = _h.get(val)
+                if t is None:
+                    return
+                if _o and (base == ("in", 3)
+                           or (base[0] == "add" and base[1] == ("in", 3))):
+                    at = off + (base[2] if base[0] == "add" else 0)
+                    self.fields[_o][at][t] += 1
+                elif base[0] == "c":
+                    self.globals[base[1] + off][t] += 1
+
+            interpret(dol, start, start + size, on_store=on_store,
+                      keeps_r3=keeps)
 
     def ctor_count(self, cls):
         return len(self.ctors.get(cls, ()))
 
     def class_of_object(self, s):
+        e = s.obj
+        if e[0] == "mem" and e[1][0] == "c":                 # a typed global
+            return _sole(self.globals.get(e[1][1] + e[2]))
         owner = self.of_fn.get(s.fn)
         if owner is None:
             return None
-        if s.obj == ("in", 3):
+        if e == ("in", 3):
             return owner
-        if s.obj[0] == "add" and s.obj[1] == ("in", 3):
-            return self.layout.get(owner, {}).get(s.obj[2])
+        if e[0] == "add" and e[1] == ("in", 3):
+            return self.layout.get(owner, {}).get(e[2])
+        if e[0] == "mem" and e[1] == ("in", 3):              # a pointer member
+            return _sole(self.fields.get(owner, {}).get(e[2]))
         return None
 
     def resolve(self, s):
@@ -642,6 +726,24 @@ def main():
             print(f"{cls}   ({types.ctor_count(cls)} ctor)")
             for off in sorted(types.layout[cls]):
                 print(f"    +{off:#06x}  {types.layout[cls][off]}")
+        return
+
+    if args[0] == "--fields":
+        want = args[1].lower() if len(args) > 1 else ""
+        mono = [(c, k, v) for c in types.fields for k, v in types.fields[c].items()
+                if len(v) == 1]
+        poly = [(c, k, v) for c in types.fields for k, v in types.fields[c].items()
+                if len(v) > 1]
+        print(f"pointer members typed: {len(mono)} with one type, "
+              f"{len(poly)} polymorphic; typed globals: {len(types.globals)}\n")
+        for label, rows in (("POLYMORPHIC", poly), ("single type", mono)):
+            print(f"-- {label} --")
+            for c, k, v in sorted(rows):
+                if want and want not in c.lower():
+                    continue
+                print(f"  {c[:52]:52s} +{k:#06x}")
+                for t in sorted(v):
+                    print(f"      {t}")
         return
 
     if args[0] == "--names":

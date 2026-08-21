@@ -382,12 +382,67 @@ python parse_hocb.py --check-tree       # the octree invariants
 python parse_hocb.py FILE --obj OUT.obj # export the soup as a mesh
 ```
 
+## Asking the geometry instead — `colli_flags.py --profile`
+
+With the code route measured out (see below), the remaining evidence is the data.
+Session 7 asked "can the geometry predict the flag" and got nothing — correctly,
+because the overwhelming majority of walls carry flag 0. **The converse is a
+different measurement, and it is not symmetric: given the flag, what does the
+geometry look like?** That one is strongly non-random. Against a baseline of
+413,390 world triangles that are 17.2 % up-facing and 73.8 % vertical:
+
+| bit | tris | files | up | vertical | median area | per file | surface id 0 |
+|---|---|---|---|---|---|---|---|
+| 1 | 24458 | 182 | 5.5 % | 91.6 % | 620 | 62 | 58.9 % |
+| 2 | 20986 | 183 | 6.0 % | 92.1 % | 793 | 60 | 70.6 % |
+| 3 | 17965 | 145 | 4.7 % | 93.2 % | 922 | 72 | 67.5 % |
+| 4 | 25664 | 190 | 5.8 % | 91.6 % | 571 | 72 | 62.1 % |
+| 5 | 570 | 38 | 27.4 % | 72.6 % | 442 | 6 | 67.4 % |
+| 6 | 642 | 41 | 24.3 % | 75.7 % | 409 | 6 | 71.0 % |
+| 7 | 2016 | 33 | 8.5 % | 87.7 % | 1005 | 12 | 77.4 % |
+| 8 | 10620 | 99 | 0.5 % | 99.0 % | 1094 | 58 | 68.6 % |
+| 9 | 48806 | 153 | 16.8 % | 80.2 % | 165 | 194 | 79.3 % |
+| 11 | 126 | 22 | 34.9 % | 65.1 % | 144 | 4 | 65.1 % |
+| 16 | 3794 | 28 | 4.3 % | 95.7 % | 1192 | 4 | **4.4 %** |
+| 17 | 192 | 2 | 16.7 % | 66.7 % | 48 | 96 | 50.0 % |
+| 18 | 428 | 58 | **0.0 %** | **100.0 %** | 145 | 6 | **100.0 %** |
+
+Three groups, and each is a fingerprint rather than a name:
+
+- **1, 2, 3, 4, 8, 16, 18 sit on walls**, 91.6–100 % vertical. Bit 18 is the
+  sharpest of them: 100 % vertical, 100 % surface-id-0, tiny (median area 145
+  against 2,148 overall), about six per map across 58 maps — the profile of a
+  hand-placed invisible blocker rather than of anything the artist modelled.
+- **Bit 16 inverts the pattern that holds everywhere else.** Only 4.4 % of its
+  triangles have surface id 0, where every other bit runs 50–100 %. It marks
+  *authored* surfaces — material, footstep sound and all — that some query has to
+  skip anyway; the other bits mostly mark geometry that was never a surface.
+- **5, 6 and 11 are volumes, not surfaces.** Median areas 10–20× the overall
+  mean, 4–6 triangles per file, and bits 5 and 6 carry the *same* surface-id
+  histogram down to the individual counts (`0x1b`×106, `0x14`×50, `0x8`×30), so
+  they are two bits on one set of triangles. Bit 11 runs 4 to 12 per file, and
+  12 triangles is a box.
+
+### One anchor from the code, after all
+
+The three `ef_col##n.hcb` files are not scenery. `FUN_80256384` reads
+`database/chara/special/` keys — `NormalAttackID`, `ComboWaitTime`, `ChantPoint`,
+`HighJumpAttackID` — and loads `ef_col02n.hcb` into **two heap-allocated
+`atn::ColliTree`s**: they are the hit volumes of a character special attack.
+Their materials carry `0x298` and `0x29c` (bits 3, 4, 7, 9 and 2, 3, 4, 7, 9),
+values that *no world collision file ever uses*, with surface id 0 throughout.
+So at least part of the mask separates combat volumes from scenery — which also
+fits the reading that a bit names **the system that must ignore the triangle**,
+rather than a property of the triangle.
+
 ## What is still open
 
 - The names of the exclusion-mask bits. Three grep-shaped routes were ruled out
   here; a fourth, an abstract interpreter over every indirect call site, ruled
   out a whole region of the search space and is written up with what it did
-  establish in [21 — Resolving the indirect calls](21-indirect-calls.md).
+  establish in [21 — Resolving the indirect calls](21-indirect-calls.md). What
+  is left is the profile above: constrained guesses a test could settle, rather
+  than nothing.
 - The material flags — the surface semantics (attempted; see above for the three
   readings that were ruled out).
 - The `0x003` tail section (24 bytes).

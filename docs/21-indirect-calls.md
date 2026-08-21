@@ -103,13 +103,17 @@ python vcall_scan.py --xref 0x80057f28
 ## What it resolves
 
 ```
-functions given a class     : 5147 of 15955
+functions given a class     : 5056 of 15955
 indirect call sites         : 6505
   with a vtable shape       : 4390
   callee read out of a fixed pointer table : 258
-  callee named via the object's class      : 588
-  resolved, total           : 846   (13.0 % of all indirect calls)
+  callee named via the object's class      : 569
+  resolved, total           : 827   (12.7 % of all indirect calls)
 ```
+
+Of the 569 named by class, 567 are calls on `this`, and the handful that are not
+come from typed globals and members. That ratio is the honest summary of where
+this technique's reach ends.
 
 The two kinds of resolution are not equally strong and are reported apart.
 
@@ -127,6 +131,42 @@ guessed at.
 really of a derived class, dispatch goes to its override, and the honest reading
 of the output is "this call enters `X::v12`'s slot", not "this call runs the
 code at that address".
+
+### Typing the containers
+
+The obvious way to widen this is to type what the pointers point at, and there
+is a clean rule for it: a constructor returns `this`, so a store of
+`bl Y::ctor`'s return value into `this+OFF` says that field holds a Y. Applied
+across the binary it yields **four** single-type pointer members and one
+polymorphic one — far less than the 1,011 call sites on `[r3+K]` that wanted it,
+because members are almost always assigned from a loader or factory rather than
+from an inline `new`.
+
+The interesting part is the one that is polymorphic, and it is the reason field
+types are collected as **sets**:
+
+```
+python vcall_scan.py --fields
+-- POLYMORPHIC --
+  <character class> +0x0f80
+      chr::ControlAppearCoffin   chr::ControlAppearEnd   chr::ControlAppearSkelton
+      chr::ControlDamageLastOne  chr::ControlDropDownQuadruped
+      chr::ControlGuarded        chr::ControlMountleQuadruped
+      chr::ControlOneMotionTarget chr::ControlPushedAvoid chr::ControlShoot  …
+```
+
+That field is the character's **current control state**, and the state machine
+is implemented as a polymorphic object swapped into one pointer. A
+first-writer-wins rule would have named it after whichever `chr::Control*` came
+first and then resolved a hundred call sites confidently and wrongly. Even a
+single-type field is not trusted unless it was observed twice: the same state
+pointer shows up under two different owner names, and in one of them only one
+assignment is visible. Requiring two agreeing observations costs eight
+resolutions and removes that entire class of wrong answer.
+
+Propagation of `this` through direct calls runs to a fixpoint but drops every
+function that two different classes reach — **96 of them**. Those are functions
+a first-writer-wins rule would have silently mis-named.
 
 Function-to-class comes from three sources, kept apart in `--names`:
 
@@ -206,6 +246,7 @@ moved it. It cost minutes to test and the answer was "not at all".
 ```
 python vcall_scan.py --vptr [name]        constructors and members: class @ this+off
 python vcall_scan.py --layout [name]      the recovered member layout
+python vcall_scan.py --fields             pointer members, polymorphic ones first
 python vcall_scan.py --vcalls             every virtual call site, by slot
 python vcall_scan.py --slot 0xc --args 7,8   sites at a slot with given args known
 python vcall_scan.py --xref 0x80057f28    direct callers, with their arguments
