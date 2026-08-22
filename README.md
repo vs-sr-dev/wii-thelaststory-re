@@ -31,8 +31,8 @@ pipelines are documented with working extractors. Highlights:
 | **Pack format** `.pfs/.pkh/.pk` | Reversed; LZ11 decompression; **path hash = CRC-32/BZIP2**, confirmed in `main.dol` |
 | **Text & dialogue** | UTF-16BE plaintext; 6-language script structure (JP/EN/FR/DE/ES/IT) |
 | **Textures** | GX container `chnkdata`; all formats (CMPR, IA4/8, RGB5A3, RGB565, I4/8, RGBA8) decoded |
-| **Audio** | Standard Nintendo **BRSTM** (DSP-ADPCM); RSTM header decoded; engine sound registry (`rsid`) parsed |
-| **Text ↔ Voice** | Dialogue `voiceID` maps 1:1 to stream filename → lines linked to their voice clip (98.7%) |
+| **Audio** | **BRSTM** streams and the whole `lastworld.brsar` archive: 13,996 sound ids bound to audio, 2,756 internal waves, sequence bytecode and instrument banks |
+| **Text ↔ Voice** | Dialogue `voiceID` resolved through the sound archive → **98.95%** of 7,717 voiced lines linked to their clip; the remaining 81 are proven to be cut content |
 | **Models** `wii modl` | NW4R-based container reversed; GX display lists, vertex layout solver, skeleton, UVs, materials |
 | **Skinning** | Matrix palette (1/2/3-bone tables), the hybrid bone-space/model-space convention, per-mesh POS quantisation, node→mesh binding — models assemble with **no dropped triangles** |
 | **Animation** `wii anim` | `.motion` reversed: three track encodings, per-name bone binding, the two loop conventions, 30 fps measured |

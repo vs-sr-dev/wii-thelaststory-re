@@ -65,7 +65,7 @@ Parser: `tools/parse_rsid.py`.
 The dialogue `voiceID` (e.g. `VO_PLD001_0010`) is **literally** the `.brstm`
 filename, so linking text to voice needs no extra table:
 `tools/link_voices.py` walks the dialogue database and attaches each spoken line
-to its clip. Result: **7,717 voiced lines, 98.7% resolved** to a stream (the ~64
+to its clip. Result at the time: **7,717 voiced lines, 98.7% resolved** to a stream (the ~64
 misses are `SE_VOTWN_*` / `SE_VOBT_*` voice-sfx that live in the `brsar`).
 
 ## Decoding to WAV/OGG
