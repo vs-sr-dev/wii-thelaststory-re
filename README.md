@@ -46,6 +46,7 @@ pipelines are documented with working extractors. Highlights:
 | **Effect curve channels** | All 22 identified and grouped, with the `A × 4` table at `+0x28` decoded as the **bitmask of which groups are keyed** — checked **77,733 / 77,733** against the shipped data |
 | **Sound archive** `.brsar` | The last large container opened: 14,171 names in four patricia trees (**14,171/14,171** lookups), 13,996 sound ids bound to audio, 2,756 internal waves reached through group items, and a DSP-ADPCM decoder that reproduces the encoder's saved loop state **227/227** |
 | **Sequences & banks** `RSEQ`/`RBNK` | The archive closed: sequence bytecode read against its own plain-text labels (**898/898** tracks decode to their terminator, **572/572** jumps land on a named track), and three instrument banks whose programs cover **exactly** their own waves |
+| **Checked against the running game** | The first external validation: dumped textures caught **two decoder errors** (CMPR interpolation is 5/8-3/8, not thirds; I4/I8 put intensity in alpha), and a FIFO log decodes **555,010 / 555,010** bytes of GX commands with **175/175** array references matching `parse_model` |
 | **Debug menu** | Present in retail but deliberately unlinked at the linker level (diagnosed) |
 
 Full details are in [`docs/`](docs/).
@@ -137,6 +138,7 @@ ask, because a struct member is not something the binary records
 | [22 — Who reads offset N of a struct?](docs/22-field-xref.md) | The field-level cross reference: recovered struct usages, the small-data float pool, and the two interpreter defects it exposed |
 | [23 — The sound archive](docs/23-brsar.md) | `lastworld.brsar`: name trees, the six INFO tables, the chain from a sound id to a sample, and a DSP decoder proved against the encoder's own loop state |
 | [24 — Sequences and banks](docs/24-rseq-rbnk.md) | `RSEQ` and `RBNK`: plain-text labels that prove the bytecode, the opcode table derived from 898 clean decodes, and the instrument banks that reach the last 184 waves |
+| [25 — Differential testing](docs/25-differential-testing.md) | The first check against the game actually running: dumped textures, a FIFO log, and the CP registers cross-referenced with `parse_model` |
 
 ## Tools
 
@@ -173,6 +175,12 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `parse_building.py` | `.building` prop recipe (model + material + LODs) |
 | `parse_chr.py` | `.chr`/`.mchr` character definition and animation state machine |
 | `build_scene.py` | Compose a whole map (terrain + instanced props) into one OBJ |
+| `dolphin_texdiff.py` | Dumped textures from a real run vs our decoder, pixel for pixel (incl. mip levels) |
+| `parse_dff.py` | Dolphin FIFO log container: registers, frames, memory updates |
+| `dff_match.py` | The log's RAM blocks vs the extracted textures — byte identity, disc to running game |
+| `dff_vertex_match.py` | The log's vertex blocks vs the `.model` files; measures each file's load address |
+| `fifo_decode.py` | Decode the GX command stream; the criterion is landing exactly at the end |
+| `fifo_model_xref.py` | CP array registers vs `parse_model`'s `strm` chunks: offset and stride, from three independent sources |
 | `walk_poc.py` | A character walking on a real map: ground raycast + driven root motion |
 | `parse_gmk.py` | `.gmk` gimmicks: state machine, `MOTCMD` timeline, cross-references |
 | `parse_area.py` | `.area` per-volume environment overrides and `SET_AREA` visibility |

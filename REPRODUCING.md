@@ -139,3 +139,27 @@ The recipe and the before/after numbers are in
 `textures_png/`, dialogue DB, manifests) contain copyrighted game content and are
 **excluded by `.gitignore`** — they are yours to generate locally, not to
 redistribute.
+
+## 10. Differential testing against Dolphin
+
+The only step that needs the game *running*. See
+[docs/25](docs/25-differential-testing.md).
+
+1. In Dolphin, enable `Graphics > Advanced > Dump Textures`, and set
+   `SafeTextureCacheColorSamples = 0` in `GFX.ini` so hashes cover the whole
+   texture. Boot the game and play for a few minutes.
+2. For the geometry test, stop in a scene and use
+   `Tools > FIFO Player > Record`, 1 frame, then Save as `fifo.dff`.
+
+```
+set TLS_DUMP=<Dolphin user dir>/Dump/Textures/SLSP01
+python tools/dolphin_texdiff.py
+python tools/parse_dff.py fifo.dff
+python tools/dff_match.py fifo.dff
+python tools/fifo_decode.py fifo.dff
+python tools/fifo_model_xref.py fifo.dff
+```
+
+`fifo_decode.py` is the load-bearing one: it must report 100% of the stream
+decoded. Anything less means the vertex descriptor or a VAT is being read
+wrongly.

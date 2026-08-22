@@ -3,6 +3,9 @@
 GX formats: 0=I4 1=I8 2=IA4 3=IA8 4=RGB565 5=RGB5A3 6=RGBA8 8=C4 9=C8 0xE=CMPR.
 Each format has its own block (tile) geometry; pixels are stored tile by tile in
 raster order, and inside a tile in raster order too.
+
+In the I4/I8 formats the intensity is expanded into ALPHA as well (not 255):
+measured against Dolphin's decoder during a real run.
 """
 import struct
 
@@ -43,11 +46,11 @@ def decode(fmt, w, h, data):
                     for tx in range(0, bw, 2):
                         b = data[pos]; pos += 1
                         for k, v in ((0, b >> 4), (1, b & 0xf)):
-                            c = _c4to8(v); put(bx+tx+k, by+ty, (c, c, c, 255))
+                            c = _c4to8(v); put(bx+tx+k, by+ty, (c, c, c, c))
             elif fmt == 1:  # I8
                 for ty in range(bh):
                     for tx in range(bw):
-                        c = data[pos]; pos += 1; put(bx+tx, by+ty, (c, c, c, 255))
+                        c = data[pos]; pos += 1; put(bx+tx, by+ty, (c, c, c, c))
             elif fmt == 2:  # IA4
                 for ty in range(bh):
                     for tx in range(bw):
@@ -86,11 +89,16 @@ def decode(fmt, w, h, data):
                         r0, g0, b0, _ = rgb565(c0); r1, g1, b1, _ = rgb565(c1)
                         cols.append((r0, g0, b0, 255)); cols.append((r1, g1, b1, 255))
                         if c0 > c1:
-                            cols.append(((2*r0+r1)//3, (2*g0+g1)//3, (2*b0+b1)//3, 255))
-                            cols.append(((r0+2*r1)//3, (g0+2*g1)//3, (b0+2*b1)//3, 255))
+                            # NOT 1/3 and 2/3: the GX texture unit approximates the
+                            # two interpolated colours with 5/8 and 3/8 weights
+                            # (measured against a Dolphin dump, see dolphin_texdiff.py)
+                            cols.append(((5*r0+3*r1) >> 3, (5*g0+3*g1) >> 3, (5*b0+3*b1) >> 3, 255))
+                            cols.append(((3*r0+5*r1) >> 3, (3*g0+5*g1) >> 3, (3*b0+5*b1) >> 3, 255))
                         else:
                             cols.append(((r0+r1)//2, (g0+g1)//2, (b0+b1)//2, 255))
-                            cols.append((0, 0, 0, 0))
+                            # the fourth colour is transparent but NOT black:
+                            # it keeps the average, with alpha 0
+                            cols.append(((r0+r1)//2, (g0+g1)//2, (b0+b1)//2, 0))
                         for ty in range(4):
                             for tx in range(4):
                                 idx = (bits >> (2*(15-(ty*4+tx)))) & 3

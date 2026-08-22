@@ -171,3 +171,25 @@ python tools/parse_lip.py      FILE.lip [--json|--csv]
 
 Assembling the geometry into a coherent model is the subject of
 **[09 — Skinning](09-skinning.md)**.
+
+## Confirmed against a running game
+
+The vertex layout described above was reconstructed from the files alone. It
+has since been checked against a FIFO log — one frame of the real GX command
+stream — see [25](25-differential-testing.md). Three points are no longer
+inferences:
+
+- **175 of 175** array references confirmed: where a CP register says the
+  position/normal/colour/texcoord array lives, and with what stride, is exactly
+  the `dataOff` and bytes-per-element that `parse_model` reports from the file.
+  No discordances.
+- The `strm` classification by bytes-per-element is right: stride 6 is
+  `POS(s16x3)`, 12 is `POS(f32x3)`, 3 is `NRM(s8x3)`, 4 is a texture coordinate
+  or a colour.
+- **The per-mesh quantisation K is a declared hardware field.** VAT A carries
+  `pos_frac`; across the frame it takes the values 9-15 and 17, matching the
+  range this document had to solve for.
+
+One thing the log does *not* settle: the `strm` field at `+0x14` is not an
+attribute type tag, so the 4-byte `UV/CLR` ambiguity stays ambiguous in the
+file. It is resolved only by which CP array the display list points at.

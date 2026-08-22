@@ -172,3 +172,11 @@ character. It is a prop the game attaches at runtime, not a decoding failure.
 Everything `wii anim` needs is now in place: the bone hierarchy and world bind
 matrices ([08](08-models-geometry.md)), the three-table matrix palette, and the
 space convention that says which vertices a bone matrix may be applied to.
+
+## Confirmed against a running game
+
+The matrix-palette arrangement reconstructed here appears verbatim in a real
+frame's command stream ([25](25-differential-testing.md)): the skinned draws
+declare `PosMatIdx` together with `Tex4MatIdx`..`Tex7MatIdx` as *direct* bytes
+in the vertex, which is precisely the layout this document derived from the
+files.
