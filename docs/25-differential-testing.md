@@ -74,13 +74,22 @@ game's live RAM** — 794 vertex-stream blocks and 66 texture blocks.
 ## Part 3 — The bytes in RAM are the bytes on the disc
 
 `tools/dff_match.py` compares the texture blocks with the extracted `.texture`
-payloads. **56 of the 65 distinct blocks are byte-for-byte identical**, and the
+payloads. **54 of the 65 distinct blocks are byte-for-byte identical**, and the
 assets they identify describe one coherent scene: `dg004_*` walls and floors,
 `pc102_*`, `np_mouth`/`np_teeth`/`np_eye`, `ws002`/`ws024` weapons, `em303`,
 `tutorial_*`.
 
-Of the nine that did not match at offset 0, one is a mipmap tail *inside*
-`dg001_01_04b_bake01.texture` (found by substring search). The other eight sit
+> **Corrected while reading the BP registers.** This first said 56, because the
+> matcher compared only `min(len(payload), len(block))` bytes. A 32 KB block
+> whose first bytes happen to agree with a 128-byte texture — a black mask
+> agrees with almost anything — was being "identified". Requiring the asset to
+> be **at least as long as the region the GP actually read** drops two false
+> matches and makes every surviving one exact in length as well as content. The
+> witness that caught it is in Part 6: the same register that gives a texture's
+> address declares its width, height and format independently.
+
+Of the eleven that did not match at offset 0, one is a mipmap tail *inside*
+`dg001_01_04b_bake01.texture` (found by substring search). The others sit
 in a single address region, `0x1284`–`0x128b`, together with the run-time
 geometry described below: a scratch heap, not disc data.
 
@@ -189,3 +198,76 @@ python tools/dff_match.py fifo.dff
 python tools/fifo_decode.py fifo.dff
 python tools/fifo_model_xref.py fifo.dff
 ```
+
+## Part 6 — The BP registers: what was bound, and what the material does not say
+
+The command stream also carries **7,491 BP register writes** — the pixel-side
+state. `tools/fifo_tev.py` replays the stream keeping that state, so every draw
+can be asked what it had bound.
+
+### Texture bindings, confirmed twice
+
+`TX_SETIMAGE3` holds a texture's address (value `<< 5`). `TX_SETIMAGE0` — a
+*different* register — declares its width, height and format. So each binding
+can be checked two ways at once: the address says *which* asset, and the
+dimensions say whether that answer is consistent.
+
+**59 bindings resolved, 59 confirmed, 0 discordant.** Every address that falls
+inside a recognised RAM block belongs to a `.texture` whose `chnkdata` header
+carries exactly the width, height and format the register declares.
+
+Two false readings had to be removed first, and both were mine:
+
+- **Stale units.** Reporting a binding for every unit that has an address and a
+  format reads leftovers: the game only rewrites the registers of the unit it is
+  about to use. The units a draw *actually* uses are the ones its active TEV
+  stages name, in `RAS1_TREF` (`0x28`–`0x2f`), whose per-stage enable bit says
+  whether the stage samples a texture at all. Filtering by that cut the
+  bindings-in-use from 43,752 to 16,663.
+- **The prefix match** described above, which the register dimensions exposed.
+
+### The material does not name everything the engine binds
+
+`tools/fifo_material_xref.py` puts three sources together: the CP registers say
+which `.model` a draw's vertices come from, the BP registers say which
+`.texture` is bound, and the `.material` with the same stem — read from the disc
+alone — says what *should* be used. CP and BP are different subsystems that do
+not talk to each other, and neither has seen the material.
+
+Of the textures bound while drawing a model, **36 are named by its material and
+19 are not**. The 19 are not noise; they are four engine behaviours:
+
+| Bound but unnamed | What it is |
+|---|---|
+| `dg004_01_01*_bake01` | the area's baked lightmap, substituted into the material's `bake_tex` slot |
+| `specular`, `lightsurround` | engine-global channels, bound for any lit model |
+| `dg004_01_01_coverage01` | an area coverage map bound for *moving* objects — the character and both weapons |
+| `dg036_water03` on `dg004_Puddle01` | a shared water texture, from a different dungeon's set |
+
+**`bake_tex` is a placeholder, and the engine fills it per instance.** The claim
+is exact:
+
+- 6 models in this frame have `bake_tex` in their material;
+- all **6 of 6** bind exactly one `*_bake01` texture and nothing else beyond the
+  globals;
+- and no model *without* `bake_tex` binds a bake texture at all.
+
+The substituted bake differs per prop — `dg004_01_01_bake01`,
+`…b_bake01`, `…c_bake01` — which is what a per-instance lightmap tile looks
+like; `.locator` carries exactly such a field ([11](11-maps-and-scenes.md)).
+The map geometry itself does *not* use the placeholder: `dg004_01_01_base`
+names `dg004_01_01_base_bake01` outright. That asymmetry is the point — props
+are instanced across areas and cannot name a bake, map geometry belongs to one
+area and can.
+
+A reader of the files alone would conclude that `bake_tex` is a missing texture.
+
+### One more attribution trap
+
+Draws that use **direct** vertices — the UI, text quads, particles — read no
+array at all, so the CP base register still holds the previous model's value.
+Attributing them by that register made a character appear to be drawing the
+interface fonts. Requiring `Position` to be *indexed* before attributing a draw
+removed 13 spurious texture associations. It is the same failure as the stale
+texture units, and as the load-base attribution in Part 5: **three times in one
+session, the wrong answer came from reading state that was merely left over.**

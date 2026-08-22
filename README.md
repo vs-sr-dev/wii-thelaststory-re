@@ -46,7 +46,7 @@ pipelines are documented with working extractors. Highlights:
 | **Effect curve channels** | All 22 identified and grouped, with the `A × 4` table at `+0x28` decoded as the **bitmask of which groups are keyed** — checked **77,733 / 77,733** against the shipped data |
 | **Sound archive** `.brsar` | The last large container opened: 14,171 names in four patricia trees (**14,171/14,171** lookups), 13,996 sound ids bound to audio, 2,756 internal waves reached through group items, and a DSP-ADPCM decoder that reproduces the encoder's saved loop state **227/227** |
 | **Sequences & banks** `RSEQ`/`RBNK` | The archive closed: sequence bytecode read against its own plain-text labels (**898/898** tracks decode to their terminator, **572/572** jumps land on a named track), and three instrument banks whose programs cover **exactly** their own waves |
-| **Checked against the running game** | The first external validation: dumped textures caught **two decoder errors** (CMPR interpolation is 5/8-3/8, not thirds; I4/I8 put intensity in alpha), and a FIFO log decodes **555,010 / 555,010** bytes of GX commands with **175/175** array references matching `parse_model` |
+| **Checked against the running game** | The first external validation: dumped textures caught **two decoder errors** (CMPR interpolation is 5/8-3/8, not thirds; I4/I8 put intensity in alpha), a FIFO log decodes **555,010 / 555,010** bytes of GX commands with **175/175** array references matching `parse_model`, and its BP registers confirm **59/59** texture bindings — then show that `bake_tex` in a `.material` is a placeholder the engine fills with the area's lightmap, **6/6** |
 | **Debug menu** | Present in retail but deliberately unlinked at the linker level (diagnosed) |
 
 Full details are in [`docs/`](docs/).
@@ -181,6 +181,8 @@ Small, mostly zero-dependency Python (3.8+). See [`tools/`](tools/) and
 | `dff_vertex_match.py` | The log's vertex blocks vs the `.model` files; measures each file's load address |
 | `fifo_decode.py` | Decode the GX command stream; the criterion is landing exactly at the end |
 | `fifo_model_xref.py` | CP array registers vs `parse_model`'s `strm` chunks: offset and stride, from three independent sources |
+| `fifo_tev.py` | The BP registers: which texture each unit had bound, checked against the file header, plus TEV stage counts |
+| `fifo_material_xref.py` | What the game bound while drawing a model vs what its `.material` names — finds the engine's substituted channels |
 | `walk_poc.py` | A character walking on a real map: ground raycast + driven root motion |
 | `parse_gmk.py` | `.gmk` gimmicks: state machine, `MOTCMD` timeline, cross-references |
 | `parse_area.py` | `.area` per-volume environment overrides and `SET_AREA` visibility |

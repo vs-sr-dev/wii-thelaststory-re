@@ -71,9 +71,15 @@ def main():
         cands = idx.get(u['data'][:KEY], [])
         found = None
         for p, payload in cands:
-            n = min(len(payload), len(u['data']))
-            if payload[:n] == u['data'][:n]:
-                found = (p, n, len(payload), len(u['data']))
+            # The payload must be AT LEAST as long as the region the GP read.
+            # Comparing only min(len) "identifies" a small texture inside a
+            # large block that happens to start with the same bytes (a black
+            # mask does that with almost anything): a false positive, caught by
+            # the BP registers, which declare w/h/format independently.
+            if len(payload) < len(u['data']):
+                continue
+            if payload[:len(u['data'])] == u['data']:
+                found = (p, len(u['data']), len(payload), len(u['data']))
                 break
         if found:
             hit.append((u, found))
