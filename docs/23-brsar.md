@@ -267,6 +267,23 @@ Five sound ids point at waves of **0 or 1 sample** (192-byte stubs):
 `SE_EM202_005`, `SE_CGCS1_006`, `SE_DG022_004`, `SE_CGGR1_010`,
 `SE_EV0510_004`. They are in the retail build.
 
+## It closes the last gap in the text↔voice loop
+
+[05](05-audio-brstm.md) hooked 7,717 voiced dialogue lines to their clips by
+matching the voiceID against the stream filenames, and 104 lines would not
+match. The archive settles all of them, and it splits them in two:
+
+* **23 lines were matchable all along** and the name comparison was simply
+  wrong about it — 21 differ only in letter case (`SE_VOTWN_900A` vs
+  `SE_VOTWN_900a.brstm`), and 2 are internal `RWSD` waves with no stream at
+  all, now extractable. `link_voices.py` resolves through the archive and the
+  coverage goes 98.7% → **98.95%** (7,636 of 7,717).
+* **81 lines, on 41 distinct voiceIDs, are not sound ids anywhere in the
+  archive.** `SE_VOTWN_100` through `SE_VOTWN_110` is a contiguous planned
+  block that was never recorded. These lines have text in all six languages
+  and no voice — cut content, not a failed match. That is a different and much
+  more useful statement than "unmatched".
+
 ## Using it
 
 ```

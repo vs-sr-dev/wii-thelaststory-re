@@ -87,3 +87,14 @@ in the manifest for anyone reconstructing seamless playback.
 browser** that shows each line with its 6-language text and an inline play button
 for the voice clip — a text+voice reading of the whole script, built from your
 own extraction.
+
+---
+
+**Update (23).** The `.brsar` has since been opened — see
+[23 — The sound archive](23-brsar.md). It supersedes name matching as the way
+to find a sound's audio: 398 sounds play a `.brstm` that is not named after
+them, and 1,086 sounds named `SE_*` are routed to `PLAYER_VOICE` rather than
+the sound-effect player. It also closes the 104 dialogue lines this document
+could not hook: 23 were matchable (21 differed only in letter case), and the
+remaining 81 reference voiceIDs that do not exist in the archive at all.
+
