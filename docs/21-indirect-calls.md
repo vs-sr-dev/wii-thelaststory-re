@@ -215,7 +215,14 @@ Two candidate explanations survive, and they are cheap to tell apart. Either the
 object arrives out of a container or from a call this cannot see through — 180
 shaped sites are still rooted at `ret(...)`, and 983 have a CTR shape that is not
 a vtable load at all — or the receiver is one of the 2,545 sites rooted at `r3`
-whose enclosing class is not among the 5,147 that have one. The layout table
+whose enclosing class is not among the **5,401** that have one.
+
+> **On that last figure.** It read 5,147 until session 15, which was neither the
+> session-12 measurement (5,056) nor the improved one (5,401): it was the row
+> count of a `dol_fn_classes.csv` regenerated part-way through the fix and never
+> re-checked. Re-running `vcall_scan.py --names` gives 5,401, matching
+> [22](22-field-xref.md). The other counts in this paragraph — 2,545, 180, 983 —
+> are the session-12 run and have **not** been re-measured since. The layout table
 covers only the classes that own an object with a vtable; widening it, most
 plausibly by typing the containers, is the next instrument.
 

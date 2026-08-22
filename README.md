@@ -134,7 +134,7 @@ ask, because a struct member is not something the binary records
 | [18 — DOL class names](docs/18-dol-classes.md) | RTTI survived the strip: 704 C++ class names and their vtables, recovering named functions |
 | [19 — A Gekko SLEIGH for Ghidra](docs/19-gekko-sleigh.md) | Teaching Ghidra the Wii's paired-single instructions: 44 % → 97.6 % of the text, with the before/after measurement |
 | [20 — The 22 `.eff` channels](docs/20-eff-channels.md) | The curve evaluator, the group bitmask at `+0x28`, and the 77,733/77,733 check that proves the map |
-| [21 — Resolving the indirect calls](docs/21-indirect-calls.md) | Reading the register file instead of grepping bytes: virtual call sites, recovered object layouts, 5,147 functions given a class |
+| [21 — Resolving the indirect calls](docs/21-indirect-calls.md) | Reading the register file instead of grepping bytes: virtual call sites, recovered object layouts, 5,401 functions given a class |
 | [22 — Who reads offset N of a struct?](docs/22-field-xref.md) | The field-level cross reference: recovered struct usages, the small-data float pool, and the two interpreter defects it exposed |
 | [23 — The sound archive](docs/23-brsar.md) | `lastworld.brsar`: name trees, the six INFO tables, the chain from a sound id to a sample, and a DSP decoder proved against the encoder's own loop state |
 | [24 — Sequences and banks](docs/24-rseq-rbnk.md) | `RSEQ` and `RBNK`: plain-text labels that prove the bytecode, the opcode table derived from 898 clean decodes, and the instrument banks that reach the last 184 waves |
