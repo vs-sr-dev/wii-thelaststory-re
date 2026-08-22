@@ -29,6 +29,7 @@ order.
   python tools/parse_brsar.py --csv audio/brsar_sounds.csv
   python tools/parse_brsar.py --groups audio/brsar_groups.csv
   python tools/parse_brsar.py --extract audio/rwav
+  python tools/parse_brsar.py --seq audio/sequences.txt --banks audio/brsar_banks.csv
 """
 import argparse
 import collections
@@ -541,6 +542,185 @@ def read_rwsd(b, addr):
 
 
 # --------------------------------------------------------------------------
+# RSEQ -- the sequences
+# --------------------------------------------------------------------------
+
+def read_rseq(b, addr):
+    """(bytecode base, [(offset, label name)], end of the DATA section).
+
+    The labels are the reason this format opens at all: they are plain text,
+    they name the entry points, and their offsets are what every claim about
+    the bytecode below is checked against.
+    """
+    secs = {}
+    for i in range(b.u16(addr + 0x0e)):
+        o, s = b.u32(addr + 0x10 + i * 8), b.u32(addr + 0x14 + i * 8)
+        secs[bytes(b.d[addr + o:addr + o + 4])] = (addr + o, s)
+    if b'DATA' not in secs or b'LABL' not in secs:
+        return None, [], 0
+    data, dsize = secs[b'DATA']
+    base = data + b.u32(data + 8)
+    body = secs[b'LABL'][0] + 8
+    labels = []
+    for i in range(b.u32(body)):
+        e = body + b.u32(body + 4 + i * 4)
+        labels.append((b.u32(e), b.d[e + 8:e + 8 + b.u32(e + 4)].decode('ascii', 'replace')))
+    return base, labels, data + dsize
+
+
+def varint(d, p):
+    """The 7-bit-per-byte length encoding, high bit = continue."""
+    v = n = 0
+    while True:
+        v = (v << 7) | (d[p + n] & 0x7f)
+        n += 1
+        if not d[p + n - 1] & 0x80:
+            return v, n
+
+
+# Argument shapes, measured here and not taken on faith.  '1' = one byte,
+# '2' = u16, '3' = u24, 'v' = varint.  The names are only given where the data
+# earns them (see docs/24-rseq-rbnk.md); the rest keep their number.
+SEQ_OPS = {
+    0x80: ('wait', 'v'),
+    0x81: ('prg', 'v'),
+    0x88: ('opentrack', '13'),
+    0x89: ('jump', '3'),
+    0x8a: ('call', '3'),
+    0xa0: ('random', 'C22'),      # a prefix: the command byte, then s16 min, max
+    0xc0: ('pan', '1'),
+    0xc1: ('volume', '1'),
+    0xc4: ('pitchbend', '1'),
+    0xc7: ('notewait', '1'),
+    0xe1: ('tempo', '2'),
+    0xfc: ('op_fc', ''),
+    0xfd: ('op_fd', ''),
+    0xfe: ('alloctrack', '2'),
+    0xff: ('fin', ''),
+}
+for _o in range(0xb0, 0xe0):
+    SEQ_OPS.setdefault(_o, ('op_%02x' % _o, '1'))
+for _o in (0xe0, 0xe2, 0xe3):
+    SEQ_OPS.setdefault(_o, ('op_%02x' % _o, '2'))
+
+
+def seq_arglen(d, p, spec):
+    n = 0
+    for c in spec:
+        if c == 'v':
+            v, k = varint(d, p + n)
+            n += k
+        elif c == 'C':
+            n += 1
+        else:
+            n += int(c)
+    return n
+
+
+def decode_track(b, base, off, end):
+    """Decode one track to a list of (offset, opcode, name, raw args).
+
+    Stops on `fin`.  Returns None if it meets an opcode it cannot size or runs
+    off the end -- which is the whole point: a wrong argument width desyncs and
+    fails to land on the terminator, so 'every track decodes' is a real test.
+    """
+    out = []
+    p = base + off
+    while p < end:
+        op = b.d[p]
+        if op < 0x80:                      # note: velocity, then a varint length
+            ln, n = varint(b.d, p + 2)
+            out.append((p - base, op, 'note', (op, b.d[p + 1], ln)))
+            p += 2 + n
+            continue
+        if op not in SEQ_OPS:
+            return None
+        name, spec = SEQ_OPS[op]
+        n = seq_arglen(b.d, p + 1, spec)
+        out.append((p - base, op, name, bytes(b.d[p + 1:p + 1 + n])))
+        p += 1 + n
+        if op == 0xff:
+            return out
+    return None
+
+
+# --------------------------------------------------------------------------
+# RBNK -- the instrument banks
+# --------------------------------------------------------------------------
+
+def rbnk_entries(b, addr):
+    """[(type tag, address)] -- one per program number, in order."""
+    data = addr + b.u32(addr + 0x10)
+    body = data + 8
+    return body, [(b.d[body + 5 + i * 8], body + b.u32(body + 4 + i * 8 + 4))
+                  for i in range(b.u32(body))]
+
+
+def rbnk_leaves(b, body, tag, p, depth=0):
+    """Follow one program entry down to the direct records it can reach.
+
+    Tag 0 is a null program, 1 is a direct record, 2 splits by key range
+    (a count, that many upper key bounds, aligned to 4, then that many
+    references) and 3 by index.
+    """
+    if depth > 4 or tag == 0:
+        return []
+    if tag == 1:
+        return [p]
+    if tag == 2:
+        n = b.d[p]
+        q = (p + 1 + n + 3) & ~3
+        out = []
+        for i in range(n):
+            out += rbnk_leaves(b, body, b.d[q + i * 8 + 1],
+                               body + b.u32(q + i * 8 + 4), depth + 1)
+        return out
+    if tag == 3:
+        lo, hi = b.u32(p), b.u32(p + 4)
+        out = []
+        for i in range(hi - lo + 1):
+            out += rbnk_leaves(b, body, b.d[p + 8 + i * 8 + 1],
+                               body + b.u32(p + 8 + i * 8 + 4), depth + 1)
+        return out
+    return []
+
+
+class Instrument(object):
+    """A direct record: 48 bytes, of which only the first 20 are ever used."""
+
+    def __init__(self, b, p):
+        self.addr = p
+        self.wave_index = b.u32(p + 0x00)
+        self.attack = b.u8(p + 0x04)
+        self.decay = b.u8(p + 0x05)
+        self.sustain = b.u8(p + 0x06)
+        self.release = b.u8(p + 0x07)
+        self.original_key = b.u8(p + 0x0c)
+        self.volume = b.u8(p + 0x0d)
+        self.pan = b.u8(p + 0x0e)
+        self.tune = struct.unpack_from('>f', b.d, p + 0x10)[0]
+
+
+def bank_items(b):
+    """The RBNK group items, one per bank file (a bank can be packed twice)."""
+    out = {}
+    for gi, g in enumerate(b.groups):
+        for k, it in enumerate(g.items):
+            if item_kind(b, g, it) == b'RBNK':
+                out.setdefault(it.file_id, (gi, k, it))
+    return out
+
+
+def seq_items(b):
+    out = {}
+    for gi, g in enumerate(b.groups):
+        for k, it in enumerate(g.items):
+            if item_kind(b, g, it) == b'RSEQ':
+                out[(gi, k)] = it
+    return out
+
+
+# --------------------------------------------------------------------------
 # reports
 # --------------------------------------------------------------------------
 
@@ -752,8 +932,8 @@ def cmd_validate(b):
                   if item_kind(b, g, it) == b'RBNK')
     allok &= check('every RWAV in an RWSD item is reached by a sound name',
                    len(owners), in_rwsd)
-    allok &= check('the unreached waves are exactly the RBNK ones',
-                   tot - len(owners), in_rbnk, '(instrument samples)')
+    allok &= check('the rest are exactly the RBNK ones',
+                   tot - len(owners), in_rbnk, '(instrument samples, reached below)')
 
     print("=== against LastWorld.rsid.csv (the disc's own registry) ===")
     rsid = os.path.join(os.path.dirname(DEFAULT), 'LastWorld.rsid.csv')
@@ -770,6 +950,127 @@ def cmd_validate(b):
                        1 if tail == expect else 0, 1, '%d vs %d' % (tail, expect))
     else:
         print('  (LastWorld.rsid.csv not found, skipped)')
+
+    print('=== RSEQ: the sequences ===')
+    seqs = seq_items(b)
+    byfile = {}
+    for (gi, k), it in seqs.items():
+        byfile.setdefault(it.file_id, (gi, k, it))
+    nsec = nfin = nend = 0
+    nmask = nmulti = 0
+    ot_ok = ot_tot = 0
+    tr_ok = tr_tot = 0
+    for fid, (gi, k, it) in byfile.items():
+        g = b.groups[gi]
+        base, labels, end = read_rseq(b, g.data_offset + it.data_offset)
+        if base is None:
+            continue
+        nsec += 1
+        named, tracks = {}, {}
+        for o, nm in labels:
+            tail = nm.rsplit('_', 1)[-1]
+            if tail.isdigit() and '_Track_' in nm:
+                tracks[int(tail)] = o
+            else:
+                named.setdefault(tail, o)
+        if 'End' in named:
+            nend += 1
+            if b.d[base + named['End']] == 0xFF:
+                nfin += 1
+        if 'Begin' in named and b.d[base + named['Begin']] == 0xFE:
+            nmulti += 1
+            if b.u16(base + named['Begin'] + 1) == sum(1 << t for t in tracks):
+                nmask += 1
+        if 'Start' in named:
+            p = base + named['Start'] + 2       # past the two-byte B0 prologue
+            while b.d[p] == 0x88:
+                ot_tot += 1
+                if tracks.get(b.d[p + 1]) == ((b.d[p + 2] << 16) | (b.d[p + 3] << 8) | b.d[p + 4]):
+                    ot_ok += 1
+                p += 5
+        for off in (sorted(tracks.values()) or
+                    [named[x] for x in ('Start',) if x in named] or
+                    [o for o, _ in labels]):
+            tr_tot += 1
+            if decode_track(b, base, off, end) is not None:
+                tr_ok += 1
+    allok &= check('every RSEQ carries a DATA and a LABL section', nsec, len(byfile))
+    allok &= check('the byte at the End label is `fin` (0xFF)', nfin, nend)
+    allok &= check('alloctrack mask == the set of Track_N labels', nmask, nmulti)
+    allok &= check('every 0x88 names a Track_N label and its number', ot_ok, ot_tot)
+    allok &= check('every track decodes cleanly to its terminator', tr_ok, tr_tot)
+
+    # the sound entry has to land somewhere meaningful in all that
+    ep_ok = ep_tot = 0
+    bank_ok = 0
+    nseq_sounds = 0
+    for i, s in enumerate(b.sounds):
+        if s.sound_type != 1:
+            continue
+        nseq_sounds += 1
+        off = b.u32(b.info_base + s.ext_ref.offset)
+        if b.u32(b.info_base + s.ext_ref.offset + 4) < len(b.banks):
+            bank_ok += 1
+        for gi, k in b.files[s.file_id].positions:
+            if (gi, k) not in seqs:
+                continue
+            g = b.groups[gi]
+            base, labels, _ = read_rseq(b, g.data_offset + seqs[(gi, k)].data_offset)
+            ep_tot += 1
+            if off in [o for o, _ in labels]:
+                ep_ok += 1
+    allok &= check('a SEQ sound\'s entry offset is a label offset', ep_ok, ep_tot)
+    allok &= check('a SEQ sound\'s bank id indexes the bank table', bank_ok, nseq_sounds)
+
+    print('=== RBNK: the instrument banks ===')
+    banks = bank_items(b)
+    ncov = nleaf = nrange = 0
+    for fid, (gi, k, it) in banks.items():
+        g = b.groups[gi]
+        body, ents = rbnk_entries(b, g.data_offset + it.data_offset)
+        waves = item_rwavs(b, g, it)
+        idx = []
+        for tag, p in ents:
+            if tag not in (0, 1):
+                nrange += 1
+            for lp in rbnk_leaves(b, body, tag, p):
+                idx.append(Instrument(b, lp).wave_index)
+        nleaf += len(idx)
+        if set(idx) == set(range(len(waves))):
+            ncov += 1
+    allok &= check('each bank\'s programs cover exactly its own waves', ncov, len(banks))
+    print('  %d programs resolve to %d instrument records (%d split by key range)'
+          % (sum(len(rbnk_entries(b, b.groups[gi].data_offset + it.data_offset)[1])
+                 for gi, k, it in banks.values()), nleaf, nrange))
+
+    # and the sequences have to agree with the banks they name
+    prg_ok = prg_tot = 0
+    ninst = {}
+    for i, bk in enumerate(b.banks):
+        gi, k, it = banks[bk.file_id]
+        ninst[i] = len(rbnk_entries(b, b.groups[gi].data_offset + it.data_offset)[1])
+    for i, s in enumerate(b.sounds):
+        if s.sound_type != 1:
+            continue
+        lim = ninst.get(b.u32(b.info_base + s.ext_ref.offset + 4), 0)
+        for gi, k in b.files[s.file_id].positions:
+            if (gi, k) not in seqs:
+                continue
+            g = b.groups[gi]
+            base, labels, end = read_rseq(b, g.data_offset + seqs[(gi, k)].data_offset)
+            tracks = [o for o, nm in labels
+                      if '_Track_' in nm and nm.rsplit('_', 1)[-1].isdigit()]
+            if not tracks:
+                tracks = [o for o, nm in labels if nm.endswith('_Start')] or \
+                         [o for o, _ in labels]
+            for off in tracks:
+                for _, op, nm, args in decode_track(b, base, off, end) or []:
+                    if op == 0x81:
+                        prg_tot += 1
+                        if varint(args, 0)[0] < lim:
+                            prg_ok += 1
+    allok &= check('every prg is a program of the bank its sound names',
+                   prg_ok, prg_tot)
 
     # The encoder left its own state behind, so the decoder can be checked
     # against it sample for sample rather than by ear: the predictor/scale
@@ -955,6 +1256,97 @@ def cmd_extract(b, outdir, decode=True, limit=None, unique=True):
             print('  %s: %s' % f)
 
 
+def cmd_seq(b, path):
+    """Write every sequence out as readable text, with its labels in place."""
+    seqs = seq_items(b)
+    byfile = {}
+    for (gi, k), it in seqs.items():
+        byfile.setdefault(it.file_id, (gi, k, it))
+    # which sound names enter which sequence, and where
+    entries = collections.defaultdict(list)
+    for i, s in enumerate(b.sounds):
+        if s.sound_type != 1:
+            continue
+        off = b.u32(b.info_base + s.ext_ref.offset)
+        bank = b.u32(b.info_base + s.ext_ref.offset + 4)
+        for gi, k in b.files[s.file_id].positions:
+            if (gi, k) in seqs:
+                entries[seqs[(gi, k)].file_id].append((b.sound_name(i), off, bank))
+    n = 0
+    with open(path, 'w', encoding='utf-8') as fh:
+        for fid, (gi, k, it) in sorted(byfile.items()):
+            g = b.groups[gi]
+            base, labels, end = read_rseq(b, g.data_offset + it.data_offset)
+            if base is None:
+                continue
+            n += 1
+            at = collections.defaultdict(list)
+            for o, nm in labels:
+                at[o].append(nm)
+            fh.write('=== file %d  group %s  %d bytes ===\n'
+                     % (fid, b.group_name(gi) or '<unnamed>', it.data_size))
+            for nm, off, bank in sorted(set(entries.get(fid, []))):
+                fh.write('    entered by %s at +%#x, bank %s\n'
+                         % (nm, off, b.string(b.banks[bank].string_id)
+                            if bank < len(b.banks) else bank))
+            # everything except the Begin/End bookends is an entry point:
+            # Start, each Track_N, and the hand-written sequences whose single
+            # label is just a name (`town_zawa`, `jihibiki_goo`)
+            starts = sorted(o for o, nm in labels
+                            if not nm.endswith(('_Begin', '_End')))
+            for off in starts:
+                fh.write('  %s:\n' % ', '.join(at.get(off, ['+%#x' % off])))
+                for o, op, name, args in decode_track(b, base, off, end) or []:
+                    if name == 'note':
+                        fh.write('    %04x  note   key %-3d vel %-3d len %d\n'
+                                 % ((o,) + args))
+                    elif op in (0x80, 0x81):
+                        fh.write('    %04x  %-6s %d\n' % (o, name, varint(args, 0)[0]))
+                    elif op == 0xa0:
+                        fh.write('    %04x  random on %#04x in [%d, %d]\n'
+                                 % (o, args[0],
+                                    struct.unpack_from('>h', args, 1)[0],
+                                    struct.unpack_from('>h', args, 3)[0]))
+                    elif op == 0x88:
+                        fh.write('    %04x  opentrack %d -> +%#x\n'
+                                 % (o, args[0], (args[1] << 16) | (args[2] << 8) | args[3]))
+                    elif not args:
+                        fh.write('    %04x  %s\n' % (o, name))
+                    elif len(args) == 1:
+                        fh.write('    %04x  %-9s %d\n' % (o, name, args[0]))
+                    elif len(args) == 2:
+                        fh.write('    %04x  %-9s %d\n'
+                                 % (o, name, struct.unpack_from('>H', args, 0)[0]))
+                    else:
+                        fh.write('    %04x  %-9s %s\n' % (o, name, args.hex()))
+            fh.write('\n')
+    print('wrote %s (%d sequences)' % (path, n))
+
+
+def cmd_banks(b, path):
+    with open(path, 'w', newline='', encoding='utf-8') as fh:
+        w = csv.writer(fh)
+        w.writerow(['bank', 'program', 'kind', 'wave_index', 'attack', 'decay',
+                    'sustain', 'release', 'original_key', 'volume', 'pan', 'tune'])
+        banks = bank_items(b)
+        for i, bk in enumerate(b.banks):
+            gi, k, it = banks[bk.file_id]
+            g = b.groups[gi]
+            body, ents = rbnk_entries(b, g.data_offset + it.data_offset)
+            name = b.string(bk.string_id)
+            for prg, (tag, p) in enumerate(ents):
+                kind = {0: 'null', 1: 'direct', 2: 'key range', 3: 'index'}.get(tag, tag)
+                for lp in rbnk_leaves(b, body, tag, p) or [None]:
+                    if lp is None:
+                        w.writerow([name, prg, kind] + [''] * 9)
+                        continue
+                    n = Instrument(b, lp)
+                    w.writerow([name, prg, kind, n.wave_index, n.attack, n.decay,
+                                n.sustain, n.release, n.original_key, n.volume,
+                                n.pan, round(n.tune, 6)])
+    print('wrote %s' % path)
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -964,6 +1356,8 @@ def main():
     ap.add_argument('--csv')
     ap.add_argument('--groups')
     ap.add_argument('--extract')
+    ap.add_argument('--seq', help='dump every sequence as readable text')
+    ap.add_argument('--banks', help='write the instrument banks as CSV')
     ap.add_argument('--limit', type=int)
     ap.add_argument('--no-decode', action='store_true')
     ap.add_argument('--all-copies', action='store_true',
@@ -972,7 +1366,8 @@ def main():
 
     b = Brsar(open(a.brsar, 'rb').read())
     rc = 0
-    if a.summary or not (a.validate or a.csv or a.groups or a.extract):
+    if a.summary or not (a.validate or a.csv or a.groups or a.extract
+                         or a.seq or a.banks):
         cmd_summary(b)
     if a.validate:
         rc = cmd_validate(b)
@@ -980,6 +1375,10 @@ def main():
         cmd_csv(b, a.csv)
     if a.groups:
         cmd_groups(b, a.groups)
+    if a.seq:
+        cmd_seq(b, a.seq)
+    if a.banks:
+        cmd_banks(b, a.banks)
     if a.extract:
         cmd_extract(b, a.extract, decode=not a.no_decode, limit=a.limit,
                     unique=not a.all_copies)

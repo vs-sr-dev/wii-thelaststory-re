@@ -45,6 +45,7 @@ pipelines are documented with working extractors. Highlights:
 | **`main.dol`** | Loaded in Ghidra via a custom DOL loader; boot call-graph reconstructed. Ghidra's stock PowerPC has no Gekko paired-singles and saw only **44 %** of the text — installing a **Gekko SLEIGH** language took that to **97.6 %** and 15,955 functions, which is what unblocked the effect channels |
 | **Effect curve channels** | All 22 identified and grouped, with the `A × 4` table at `+0x28` decoded as the **bitmask of which groups are keyed** — checked **77,733 / 77,733** against the shipped data |
 | **Sound archive** `.brsar` | The last large container opened: 14,171 names in four patricia trees (**14,171/14,171** lookups), 13,996 sound ids bound to audio, 2,756 internal waves reached through group items, and a DSP-ADPCM decoder that reproduces the encoder's saved loop state **227/227** |
+| **Sequences & banks** `RSEQ`/`RBNK` | The archive closed: sequence bytecode read against its own plain-text labels (**898/898** tracks decode to their terminator, **572/572** jumps land on a named track), and three instrument banks whose programs cover **exactly** their own waves |
 | **Debug menu** | Present in retail but deliberately unlinked at the linker level (diagnosed) |
 
 Full details are in [`docs/`](docs/).
@@ -135,6 +136,7 @@ ask, because a struct member is not something the binary records
 | [21 — Resolving the indirect calls](docs/21-indirect-calls.md) | Reading the register file instead of grepping bytes: virtual call sites, recovered object layouts, 5,147 functions given a class |
 | [22 — Who reads offset N of a struct?](docs/22-field-xref.md) | The field-level cross reference: recovered struct usages, the small-data float pool, and the two interpreter defects it exposed |
 | [23 — The sound archive](docs/23-brsar.md) | `lastworld.brsar`: name trees, the six INFO tables, the chain from a sound id to a sample, and a DSP decoder proved against the encoder's own loop state |
+| [24 — Sequences and banks](docs/24-rseq-rbnk.md) | `RSEQ` and `RBNK`: plain-text labels that prove the bytecode, the opcode table derived from 898 clean decodes, and the instrument banks that reach the last 184 waves |
 
 ## Tools
 
